@@ -170,6 +170,7 @@ private:
     int evaluate(const QString &expression, const QString &purpose);
     void keyEvent(const QString &type, const QVariantMap &fields);
     void applySwipe();
+    void applyMobileView();
     void setProgress(double progress);
     void setPageActive(bool active);
     void updateCurrentTab();

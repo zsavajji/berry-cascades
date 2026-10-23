@@ -501,6 +501,7 @@ void Browser::attached()
     m_devtools->call("Page.addScriptToEvaluateOnNewDocument", script);
     evaluate(m_pageScript, QString());
     m_devtools->call("Page.getFrameTree");
+    applyMobileView();
     applySwipe();
     refreshHistory();
     if (firstAttach)
@@ -1103,6 +1104,33 @@ void Browser::find(const QString &text, bool backwards)
              "find");
 }
 
+// Mobile view: the engine is a desktop content_shell that only sends a mobile
+// user agent. DevTools' mobile device mode makes it lay pages out as mobile
+// Chrome does: <meta name=viewport> honoured, pages without one laid out at
+// 980 px and zoomed to fit, (pointer: coarse) and no hover, so sites serve
+// their touch layouts. Width and height 0 keep the view's real size. Off with
+// "Request desktop sites", or in Settings.
+void Browser::applyMobileView()
+{
+    if (setting("mobileView").toBool() && !setting("desktop").toBool()) {
+        QVariantMap metrics;
+        metrics["width"] = 0;
+        metrics["height"] = 0;
+        metrics["deviceScaleFactor"] = 0;
+        metrics["mobile"] = true;
+        m_devtools->call("Emulation.setDeviceMetricsOverride", metrics);
+        QVariantMap touch;
+        touch["enabled"] = true;
+        touch["maxTouchPoints"] = 5;
+        m_devtools->call("Emulation.setTouchEmulationEnabled", touch);
+    } else {
+        m_devtools->call("Emulation.clearDeviceMetricsOverride");
+        QVariantMap touch;
+        touch["enabled"] = false;
+        m_devtools->call("Emulation.setTouchEmulationEnabled", touch);
+    }
+}
+
 // Swipe to go back/forward, as the "swipeNavigation" setting says.
 void Browser::applySwipe()
 {
@@ -1197,7 +1225,8 @@ QVariant Browser::setting(const QString &key) const
     if (key == "desktop" || key == "verifyCerts" || key == "swipeNavigation" || key == "wasmLite"
         || key == "scrollbars" || key == "detailedLog")
         return m_settings.value(key, false).toBool();
-    if (key == "javascript" || key == "images" || key == "suggestions" || key == "pauseInBackground")
+    if (key == "javascript" || key == "images" || key == "suggestions" || key == "pauseInBackground"
+        || key == "mobileView")
         return m_settings.value(key, true).toBool();
     if (key == "search")
         return QString(searchEngine(m_settings.value(key, "duckduckgo").toString()).key);
@@ -1213,6 +1242,10 @@ void Browser::setSetting(const QString &key, const QVariant &value)
         emit searchChanged();
     if (key == "swipeNavigation")
         applySwipe();
+    if (key == "mobileView" && m_devtools->isAttached()) {
+        applyMobileView();
+        reload();
+    }
     if (isEngineSetting(key) && !m_restartNeeded) {
         m_restartNeeded = true;
         emit restartNeededChanged();

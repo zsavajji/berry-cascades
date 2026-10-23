@@ -74,6 +74,12 @@ Page {
             }
             CheckBox {
                 topMargin: 20
+                text: qsTr("Mobile view (lay pages out for a touch screen)")
+                checked: browser.setting("mobileView")
+                onCheckedChanged: browser.setSetting("mobileView", checked)
+            }
+            CheckBox {
+                topMargin: 20
                 text: qsTr("Request desktop sites")
                 checked: browser.setting("desktop")
                 onCheckedChanged: browser.setSetting("desktop", checked)

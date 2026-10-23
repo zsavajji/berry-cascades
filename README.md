@@ -35,6 +35,11 @@ above it while a page loads.
   while one is focused), and the hardware keyboard types into the page.
 - **Downloads**: pages' downloads and saved images go to the shared
   Downloads folder; the Downloads sheet shows progress and opens files.
+- **Mobile view** on by default: the engine is a desktop content_shell that
+  only sent a mobile user agent, so pages ignored their mobile viewport and
+  saw a mouse. DevTools' mobile device mode (`Emulation.setDeviceMetricsOverride`
+  with `mobile: true`, plus touch emulation) makes it lay pages out as
+  mobile Chrome does. Off with *Request desktop sites*, or in Settings.
 - **Swipe navigation** off by default: a sideways swipe at the edge of a
   page does not go back or forward. Settings can turn it on. It is
   Chromium's overscroll history navigation, which has no switch in this
