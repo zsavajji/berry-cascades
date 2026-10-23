@@ -139,6 +139,33 @@ Page {
                 onCreationCompleted: selectByValue(qualityDropDown, browser.setting("quality"))
                 onSelectedValueChanged: browser.setSetting("quality", selectedValue)
             }
+            DropDown {
+                title: qsTr("Frame rate cap")
+                Option { text: qsTr("Automatic (45 fps on quad-core, 30 on dual-core)"); value: 0 }
+                Option { text: "30 fps"; value: 30 }
+                Option { text: "45 fps"; value: 45 }
+                Option { text: "60 fps"; value: 60 }
+                id: fpsDropDown
+                onCreationCompleted: selectByValue(fpsDropDown, browser.setting("fps"))
+                onSelectedValueChanged: browser.setSetting("fps", selectedValue)
+            }
+            CheckBox {
+                topMargin: 20
+                text: qsTr("Lighter WebAssembly (less CPU while web apps start)")
+                checked: browser.setting("wasmLite")
+                onCheckedChanged: browser.setSetting("wasmLite", checked)
+            }
+            CheckBox {
+                topMargin: 20
+                text: qsTr("Pause pages while the browser is minimized")
+                checked: browser.setting("pauseInBackground")
+                onCheckedChanged: browser.setSetting("pauseInBackground", checked)
+            }
+            Label {
+                text: qsTr("Turn this off to keep music or calls in a page playing in the background.")
+                multiline: true
+                textStyle.base: SystemDefaults.TextStyles.SubtitleText
+            }
             CheckBox {
                 topMargin: 20
                 text: qsTr("Verify HTTPS certificates (slower)")

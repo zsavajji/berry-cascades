@@ -70,8 +70,17 @@ Page {
         }
     }
 
+    // Lists are filled while the sheet is open, not on every change behind it.
+    property bool active: false
+    function show() {
+        tabsPage.active = true
+        tabsPage.reload()
+    }
+
     onCreationCompleted: {
-        reload()
-        browser.tabsChanged.connect(reload)
+        browser.tabsChanged.connect(function () {
+            if (tabsPage.active)
+                tabsPage.reload()
+        })
     }
 }

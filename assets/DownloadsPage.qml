@@ -95,8 +95,17 @@ Page {
         }
     }
 
+    // Lists are filled while the sheet is open, not on every change behind it.
+    property bool active: false
+    function show() {
+        downloadsPage.active = true
+        downloadsPage.reload()
+    }
+
     onCreationCompleted: {
-        reload()
-        downloads.changed.connect(reload)
+        downloads.changed.connect(function () {
+            if (downloadsPage.active)
+                downloadsPage.reload()
+        })
     }
 }

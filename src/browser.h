@@ -38,7 +38,8 @@ class Browser : public QObject
     Q_PROPERTY(QString engineState READ engineState NOTIFY engineStateChanged)
     Q_PROPERTY(QString windowId READ windowId CONSTANT)
     Q_PROPERTY(QVariantList bookmarks READ bookmarks NOTIFY bookmarksChanged)
-    Q_PROPERTY(bool bookmarked READ bookmarked NOTIFY bookmarksChanged)
+    Q_PROPERTY(bool bookmarked READ bookmarked NOTIFY bookmarkedChanged)
+    Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(bool restartNeeded READ restartNeeded NOTIFY restartNeededChanged)
     Q_PROPERTY(QVariantList tabs READ tabs NOTIFY tabsChanged)
     Q_PROPERTY(int currentTab READ currentTab NOTIFY tabsChanged)
@@ -60,6 +61,7 @@ public:
     QString windowId() const;
     QVariantList bookmarks() const;
     bool bookmarked() const;
+    double progress() const { return m_progress; }
     bool restartNeeded() const { return m_restartNeeded; }
     QVariantList tabs() const { return m_tabs; }
     int currentTab() const { return m_currentTab; }
@@ -109,6 +111,10 @@ public:
     Q_INVOKABLE void clearCache();
     Q_INVOKABLE void clearCookies();
 
+    // A picture of the page for Cascades to show while the engine window is
+    // hidden under a menu or dialog; answered by snapshotReady.
+    Q_INVOKABLE void snapshot();
+
     Q_INVOKABLE QVariant setting(const QString &key) const;
     Q_INVOKABLE void setSetting(const QString &key, const QVariant &value);
 
@@ -118,6 +124,10 @@ signals:
     void historyChanged();
     void engineStateChanged();
     void bookmarksChanged();
+    void bookmarkedChanged();
+    void progressChanged();
+    // A file:// address of the page's picture, or empty when there is none.
+    void snapshotReady(const QString &url);
     void restartNeededChanged();
     void tabsChanged();
     void selectionChanged();
@@ -142,6 +152,10 @@ private slots:
     void protocolEvent(const QString &method, const QVariantMap &params);
     void refreshHistory();
     void invoked(const bb::system::InvokeRequest &request);
+    void creepProgress();
+    void snapshotTimedOut();
+    void appVisible();
+    void appHidden();
 
 private:
     void launch();
@@ -152,6 +166,8 @@ private:
     int evaluate(const QString &expression, const QString &purpose);
     void keyEvent(const QString &type, const QVariantMap &fields);
     void applySwipe();
+    void setProgress(double progress);
+    void setPageActive(bool active);
     void updateCurrentTab();
     void saveTabs();
     QString fixUp(const QString &input) const;
@@ -192,6 +208,13 @@ private:
     QString m_selectionText;
     bool m_editing;
     QMap<int, QString> m_evaluations;
+
+    double m_progress;
+    QTimer m_progressTimer;
+    int m_snapshotId;
+    int m_snapshotCount;
+    QTimer m_snapshotTimer;
+    bool m_pageActive;
 };
 
 #endif

@@ -67,8 +67,17 @@ Page {
         }
     }
 
+    // Lists are filled while the sheet is open, not on every change behind it.
+    property bool active: false
+    function show() {
+        bookmarksPage.active = true
+        bookmarksPage.reload()
+    }
+
     onCreationCompleted: {
-        reload()
-        browser.bookmarksChanged.connect(reload)
+        browser.bookmarksChanged.connect(function () {
+            if (bookmarksPage.active)
+                bookmarksPage.reload()
+        })
     }
 }

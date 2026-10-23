@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QProcessEnvironment>
+#include <QThread>
 #include <QUrl>
 
 #include <bb/cascades/Application>
@@ -58,7 +59,7 @@ bool isEngineSetting(const QString &key)
 {
     return key == "quality" || key == "desktop" || key == "verifyCerts"
         || key == "rotation" || key == "touchMode" || key == "javascript"
-        || key == "images";
+        || key == "images" || key == "fps" || key == "wasmLite";
 }
 
 QString jsString(const QString &s)
@@ -91,6 +92,10 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     , m_pendingScroll(0)
     , m_selecting(false)
     , m_editing(false)
+    , m_progress(0)
+    , m_snapshotId(-1)
+    , m_snapshotCount(0)
+    , m_pageActive(true)
 {
     QFile script(QCoreApplication::applicationDirPath() + "/assets/page.js");
     if (script.open(QIODevice::ReadOnly))
@@ -106,6 +111,20 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     m_historyTimer.setSingleShot(true);
     m_historyTimer.setInterval(150);
     connect(&m_historyTimer, SIGNAL(timeout()), this, SLOT(refreshHistory()));
+    m_progressTimer.setInterval(300);
+    connect(&m_progressTimer, SIGNAL(timeout()), this, SLOT(creepProgress()));
+    m_snapshotTimer.setSingleShot(true);
+    m_snapshotTimer.setInterval(700);
+    connect(&m_snapshotTimer, SIGNAL(timeout()), this, SLOT(snapshotTimedOut()));
+    connect(this, SIGNAL(pageChanged()), this, SIGNAL(bookmarkedChanged()));
+    connect(this, SIGNAL(bookmarksChanged()), this, SIGNAL(bookmarkedChanged()));
+
+    // The engine cannot see the Navigator (the shim keeps it away), so it
+    // does not know when the app is minimized; pause the page from here.
+    bb::cascades::Application *app = bb::cascades::Application::instance();
+    connect(app, SIGNAL(fullscreen()), this, SLOT(appVisible()));
+    connect(app, SIGNAL(thumbnail()), this, SLOT(appHidden()));
+    connect(app, SIGNAL(invisible()), this, SLOT(appHidden()));
 
     bb::system::InvokeManager *invokes = new bb::system::InvokeManager(this);
     connect(invokes, SIGNAL(invoked(const bb::system::InvokeRequest&)),
@@ -216,7 +235,13 @@ void Browser::launch()
     env.insert("QNX_SCREEN_OUTPUT_HEIGHT", QString::number(m_height));
     env.insert("QNX_SCREEN_ROTATION", setting("rotation").toString());
     env.insert("QNX_INPUT_POLL_MS", "1");
-    env.insert("QNX_MAX_FPS", "45");
+    // Dual-core phones (Q10, Q5, Z10, Z3) get fewer raster threads and a
+    // lower frame cap than the quad-core Passport, Classic and Z30.
+    const int cores = qMax(1, QThread::idealThreadCount());
+    int fps = setting("fps").toInt();
+    if (fps <= 0)
+        fps = cores >= 4 ? 45 : 30;
+    env.insert("QNX_MAX_FPS", QString::number(fps));
     env.insert("QNX_GPU_PROBE", "0");
     env.insert("BERRY_APP_MODE", "1");
     env.insert("BERRY_EMBED_GROUP", bb::cascades::Application::instance()->mainWindow()->groupId());
@@ -312,7 +337,7 @@ QStringList Browser::engineArguments(const QString &startUrl) const
          << "--use-gl=egl"
          << "--ignore-gpu-blocklist"
          << "--enable-gpu-rasterization"
-         << "--num-raster-threads=4"
+         << QString("--num-raster-threads=%1").arg(qBound(1, QThread::idealThreadCount(), 4))
          << "--force-device-scale-factor=1"
          << "--disable-features=NetworkServiceDedicatedThread,MojoIpcz,Translate,"
             "OptimizationHints,MediaRouter,PreconnectToSearch,BackForwardCache,"
@@ -320,6 +345,11 @@ QStringList Browser::engineArguments(const QString &startUrl) const
             "InterestFeedContentSuggestions,FedCm,PrivacySandboxAdsAPIs,"
             "SharedStorageAPI,PrivateAggregationApi"
          << "--enable-low-end-device-mode"
+         // ...but keep the 128MB decoded-image budget, which low-end mode cuts
+         // to 32MB, so images are not re-decoded on every scroll (Berry
+         // Browser build 107; a field-trial parameter, no engine change).
+         << "--enable-features=ImageDecodeConfigurableFeature:"
+            "DecodedImageWorkingSetBudgetBytesForLowEndDevice/134217728"
          << "--disk-cache-size=268435456"
          << "--media-cache-size=268435456";
     if (!setting("desktop").toBool())
@@ -329,7 +359,11 @@ QStringList Browser::engineArguments(const QString &startUrl) const
         blink += ",scriptEnabled=false";
     if (!setting("images").toBool())
         blink += ",imagesEnabled=false";
-    args << "--js-flags=--max-old-space-size=256"
+    // WebAssembly stays on its baseline compiler: tier-up recompiles hot
+    // code on every core right when the page needs them (Berry's WhatsApp
+    // app ships this way).
+    args << QString("--js-flags=--max-old-space-size=256%1")
+                .arg(setting("wasmLite").toBool() ? " --no-wasm-tier-up --wasm-lazy-validation" : "")
          << "--blink-settings=" + blink
          << "--remote-debugging-address=127.0.0.1"
          << startUrl;
@@ -404,6 +438,7 @@ void Browser::targetsListed(const QVariantList &targets)
 void Browser::attached()
 {
     const bool firstAttach = m_engineState != "running";
+    m_pageActive = true;
     setEngineState("running");
     m_probe.start(kWatchMs);
     m_devtools->call("Page.enable");
@@ -473,6 +508,20 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
                 saveTabs();
             }
         }
+    } else if (method == "Page.captureScreenshot") {
+        if (id != m_snapshotId)
+            return;
+        m_snapshotId = -1;
+        m_snapshotTimer.stop();
+        const QString old = QDir::homePath() + QString("/snapshot-%1.jpg").arg(m_snapshotCount);
+        const QString path = QDir::homePath() + QString("/snapshot-%1.jpg").arg(++m_snapshotCount);
+        QFile::remove(old);
+        QFile file(path);
+        const QByteArray jpeg = QByteArray::fromBase64(result.value("data").toByteArray());
+        if (!jpeg.isEmpty() && file.open(QIODevice::WriteOnly) && file.write(jpeg) == jpeg.size())
+            emit snapshotReady(QUrl::fromLocalFile(path).toString());
+        else
+            emit snapshotReady(QString());
     } else if (method == "Page.getFrameTree") {
         m_mainFrameId = result.value("frameTree").toMap().value("frame").toMap().value("id").toString();
     } else if (method == "Page.getNavigationHistory") {
@@ -488,7 +537,6 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
             m_url = entry.value("url").toString();
             m_title = entry.value("title").toString();
             emit pageChanged();
-            emit bookmarksChanged();
             updateCurrentTab();
             if (!m_loading)
                 m_history->visit(m_url, m_title);
@@ -525,6 +573,8 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
             m_mainFrameId = frame.value("id").toString();
             m_url = frame.value("url").toString();
             emit pageChanged();
+            if (m_loading)
+                setProgress(qMax(m_progress, 0.3));
             m_historyTimer.start();
             // A new document has no bindings until they are added again.
             QVariantMap binding;
@@ -538,6 +588,8 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
             }
         }
     } else if (method == "Page.domContentEventFired" || method == "Page.loadEventFired") {
+        if (m_loading)
+            setProgress(qMax(m_progress, method == "Page.loadEventFired" ? 0.9 : 0.7));
         m_historyTimer.start();
         applySwipe();
     } else if (method == "Page.navigatedWithinDocument") {
@@ -583,7 +635,72 @@ void Browser::setLoading(bool loading)
     if (loading == m_loading)
         return;
     m_loading = loading;
+    if (loading) {
+        setProgress(0.08);
+        m_progressTimer.start();
+    } else {
+        m_progressTimer.stop();
+        setProgress(1.0);
+    }
     emit loadingChanged();
+}
+
+// DevTools reports no load progress, only milestones (navigated, DOM ready,
+// loaded); between them the bar creeps towards 90% as the stock one does.
+void Browser::creepProgress()
+{
+    setProgress(m_progress + (0.9 - m_progress) * 0.06);
+}
+
+void Browser::setProgress(double progress)
+{
+    if (qAbs(progress - m_progress) < 0.005)
+        return;
+    m_progress = progress;
+    emit progressChanged();
+}
+
+void Browser::snapshot()
+{
+    if (m_snapshotId >= 0)
+        return;
+    QVariantMap params;
+    params["format"] = QString("jpeg");
+    params["quality"] = 55;
+    m_snapshotId = m_devtools->call("Page.captureScreenshot", params);
+    if (m_snapshotId < 0)
+        emit snapshotReady(QString());
+    else
+        m_snapshotTimer.start();
+}
+
+void Browser::snapshotTimedOut()
+{
+    m_snapshotId = -1;
+    emit snapshotReady(QString());
+}
+
+void Browser::appVisible()
+{
+    setPageActive(true);
+}
+
+void Browser::appHidden()
+{
+    if (setting("pauseInBackground").toBool())
+        setPageActive(false);
+}
+
+// A frozen page runs no script, timers or animation frames, so a minimized
+// browser leaves the CPU to the app in front.
+void Browser::setPageActive(bool active)
+{
+    if (active == m_pageActive)
+        return;
+    m_pageActive = active;
+    QVariantMap params;
+    params["state"] = QString(active ? "active" : "frozen");
+    m_devtools->call("Page.setWebLifecycleState", params);
 }
 
 // ---- navigation ----------------------------------------------------------
@@ -1024,11 +1141,11 @@ QVariant Browser::setting(const QString &key) const
             quality = qMin(m_width, m_height) >= 1080 ? 0 : 1;
         return quality;
     }
-    if (key == "rotation" || key == "touchMode")
+    if (key == "rotation" || key == "touchMode" || key == "fps")
         return m_settings.value(key, 0).toInt();
-    if (key == "desktop" || key == "verifyCerts" || key == "swipeNavigation")
+    if (key == "desktop" || key == "verifyCerts" || key == "swipeNavigation" || key == "wasmLite")
         return m_settings.value(key, false).toBool();
-    if (key == "javascript" || key == "images" || key == "suggestions")
+    if (key == "javascript" || key == "images" || key == "suggestions" || key == "pauseInBackground")
         return m_settings.value(key, true).toBool();
     if (key == "search")
         return QString(searchEngine(m_settings.value(key, "duckduckgo").toString()).key);

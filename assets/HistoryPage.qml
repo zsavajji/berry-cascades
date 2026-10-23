@@ -112,8 +112,17 @@ Page {
         }
     ]
 
+    // Lists are filled while the sheet is open, not on every change behind it.
+    property bool active: false
+    function show() {
+        historyPage.active = true
+        historyPage.reload()
+    }
+
     onCreationCompleted: {
-        reload()
-        history.changed.connect(reload)
+        history.changed.connect(function () {
+            if (historyPage.active)
+                historyPage.reload()
+        })
     }
 }

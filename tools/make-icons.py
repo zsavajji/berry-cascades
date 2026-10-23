@@ -39,11 +39,35 @@ def arc(d, box, start, end, width=W):
 
 
 def arrow(name, flip):
+    # A chevron, as the stock browser's Back.
     img, d = canvas()
     xs = (lambda x: 81 - x) if flip else (lambda x: x)
-    line(d, [(xs(20), 40.5), (xs(61), 40.5)])
-    line(d, [(xs(38), 22), (xs(20), 40.5), (xs(38), 59)])
+    line(d, [(xs(49), 18), (xs(28), 40.5), (xs(49), 63)])
     save(img, name)
+
+
+def overflow_icon():
+    img, d = canvas()
+    for y in (20, 40.5, 61):
+        X, Y = p(40.5, y)
+        r = 5 * S
+        d.ellipse([X - r, Y - r, X + r, Y + r], fill=WHITE)
+    save(img, "overflow.png")
+
+
+def lock_icon():
+    blue = (0, 168, 223, 255)
+    img, d = canvas()
+    d.arc([p(27, 12), p(54, 46)], 180, 360, fill=blue, width=6 * S)
+    line_pts = [(27.5, 29), (27.5, 36)]
+    d.line([p(*q) for q in line_pts], fill=blue, width=6 * S)
+    d.line([p(53.5, 29), p(53.5, 36)], fill=blue, width=6 * S)
+    d.rounded_rectangle([p(20, 35), p(61, 68)], radius=4 * S, fill=blue)
+    X, Y = p(40.5, 49)
+    r = 4 * S
+    d.ellipse([X - r, Y - r, X + r, Y + r], fill=(0, 0, 0, 0))
+    d.rectangle([p(39, 50), p(42, 58)], fill=(0, 0, 0, 0))
+    save(img, "lock.png")
 
 
 def reload_icon():
@@ -248,4 +272,6 @@ if __name__ == "__main__":
     history_icon()
     paste_icon()
     downloads_icon()
+    overflow_icon()
+    lock_icon()
     app_icon()

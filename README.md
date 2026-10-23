@@ -1,22 +1,25 @@
 # Berry Cascades
 
-A web browser for BlackBerry 10 with a native Cascades interface: an address
-bar and an action bar on top of the Chromium engine that
+A web browser for BlackBerry 10 with a native Cascades interface in the style
+of the stock browser, on top of the Chromium engine that
 [chromium-for-bb10](https://github.com/zsavajji/chromium-for-bb10) ports to
 QNX (Berry Browser's `content_shell`, build 84).
 
 Berry Browser draws its own toolbar with Skia inside the engine. Berry
-Cascades runs the same engine with that toolbar off and puts Cascades
-around it instead:
+Cascades runs the same engine with that toolbar off and puts Cascades around
+it instead, laid out like the stock BlackBerry 10 browser: the page fills the
+screen, and one dark bar along the bottom holds Tabs, Back, the address (with
+a padlock on https and Stop/Reload) and the ⋮ menu, with a thin blue line
+above it while a page loads.
 
-- **Address bar** (top): type an address or a search; Go loads it. While
-  you type, it suggests a search with your search engine, then matching
-  bookmarks and history. The spinner shows while a page loads.
+- **Address** (bottom bar): shows the address without its scheme; tap it to
+  type an address or a search, and Go loads it. While you type, it suggests
+  a search with your search engine, then matching bookmarks and history.
 - **Search**: DuckDuckGo by default; also DuckDuckGo Lite (the html/ page,
   which works with JavaScript off), Google, Bing and Wikipedia.
-- **Action bar**: Back, Reload/Stop, Forward; in the menu, New tab, Tabs,
-  Home, Bookmarks, Add bookmark, History, Find in page, Select text, Paste,
-  Share link, Copy link, Downloads, Settings, Restart engine.
+- **⋮ menu**, sliding in from the right: Forward, New tab, Home, Add to
+  bookmarks, Bookmarks, History, Find in page, Select text, Paste, Share,
+  Copy link, Downloads, Settings, Restart engine.
 - **Tabs**, as in webmee: tabs are addresses, not running pages. The engine
   shows one page; switching loads the tab's address and puts it back where
   it was scrolled to.
@@ -25,11 +28,11 @@ around it instead:
 - **Long press** on a link or an image: Open, Open in new tab, Copy link,
   Share link, Copy link text; Open image, Save image, Copy image address.
 - **Text selection**: hold on text to select a word, then drag the handles.
-  The bar on top copies it, searches for it in a new tab, shares it,
+  The bottom bar then copies it, searches for it in a new tab, shares it,
   selects all, or ends the selection. A tap on the page ends it too.
 - **Find in page**, with the number of matches and previous/next.
-- **Paste** into the page's focused field (a button appears in the address
-  bar while one is focused), and the hardware keyboard types into the page.
+- **Paste** into the page's focused field (a button appears in the bar
+  while one is focused), and the hardware keyboard types into the page.
 - **Downloads**: pages' downloads and saved images go to the shared
   Downloads folder; the Downloads sheet shows progress and opens files.
 - **Swipe navigation** off by default: a sideways swipe at the edge of a
@@ -49,6 +52,13 @@ around WPE): search engines, history suggestions, tabs as addresses,
 long-press menus, downloads, content settings and storage.
 Not carried over: HTTP authentication and saved passwords, page width,
 and hiding the address bar on scroll (the engine window cannot resize).
+
+## Speed
+
+See [docs/SPEED.md](docs/SPEED.md): what limits the Krait phones, what the app
+does about it (pausing pages when minimized, the image-decode budget,
+CPU-aware raster threads and frame cap, lighter WebAssembly), and what is
+left for an engine build (ThinLTO, PGO).
 
 ## How it works
 
@@ -88,7 +98,9 @@ and hiding the address bar on scroll (the engine window cannot resize).
   trusting the engine's root certificates.
 - `src/history.cpp` keeps the visited pages in `history.json`.
 - The engine's window is drawn above the Cascades window, so it is hidden
-  while the menu or a sheet is open.
+  while the menu, a sheet, a dialog or the suggestions are showing. Under
+  the menu and dialogs, a snapshot of the page (`Page.captureScreenshot`)
+  stands in for it.
 
 ## Building
 
@@ -133,7 +145,7 @@ and the download flow. **It has not been run on a BlackBerry yet.** These parts 
 only be confirmed on a phone:
 
 - **The child window.** Joining the Cascades group should make the engine
-  appear under the address bar. If the page is turned, try Settings, Engine
+  appear above the bottom bar. If the page is turned, try Settings, Engine
   window, Rotation. Berry Browser's own window needs 90° as a top-level window.
   As a child window, 0° is the guess.
 - **Taps.** The Screen headers do not say which space a child window's touch
