@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QTime>
 #include <QProcessEnvironment>
 #include <QThread>
 #include <QUrl>
@@ -24,7 +25,11 @@ const char kWindowId[] = "berryEngineWindow";
 const char kSharedMisc[] = "/accounts/1000/shared/misc";
 const char kBinding[] = "__berryEvent";
 const int kProbeMs = 500;
-const int kProbeAttempts = 120;  // the engine takes 5-20 s to come up
+// A cold start can take 30-90 s on a Passport (Berry's HARDENING.md), more on
+// a dual-core phone. While the process runs, the app keeps waiting and only
+// says so at these marks.
+const int kSlowStartProbes = 120;      // 60 s
+const int kVerySlowStartProbes = 360;  // 3 min
 const int kWatchMs = 3000;
 const int kMaxTabs = 20;
 const qint64 kMaxLogBytes = 2 * 1024 * 1024;
@@ -59,7 +64,8 @@ bool isEngineSetting(const QString &key)
 {
     return key == "quality" || key == "desktop" || key == "verifyCerts"
         || key == "rotation" || key == "touchMode" || key == "javascript"
-        || key == "images" || key == "fps" || key == "wasmLite";
+        || key == "images" || key == "fps" || key == "wasmLite"
+        || key == "scrollbars" || key == "detailedLog";
 }
 
 QString jsString(const QString &s)
@@ -207,10 +213,31 @@ QString Browser::logPath() const
     return QDir::homePath() + "/engine.log";
 }
 
+// The app's own lines in the engine log, between the engine's.
+void Browser::log(const QString &line) const
+{
+    QFile file(logPath());
+    if (file.open(QIODevice::WriteOnly | QIODevice::Append))
+        file.write(QString("[berry-cascades %1] %2\n")
+                       .arg(QTime::currentTime().toString("hh:mm:ss"), line).toUtf8());
+}
+
+QString Browser::logTail() const
+{
+    QFile file(logPath());
+    if (!file.open(QIODevice::ReadOnly))
+        return tr("No log yet at %1").arg(logPath());
+    const qint64 keep = 24 * 1024;
+    if (file.size() > keep)
+        file.seek(file.size() - keep);
+    return QString::fromUtf8(file.readAll());
+}
+
 void Browser::launch()
 {
     const QString dir = engineDir();
     if (!QFile::exists(dir + "/content_shell.exe")) {
+        log("engine missing: " + dir + "/content_shell.exe");
         setEngineState("failed");
         emit message(tr("The browser engine is missing from this package."));
         return;
@@ -250,10 +277,12 @@ void Browser::launch()
     static const char *const touchModes[] = {"source", "window", "display"};
     const int touchMode = setting("touchMode").toInt();
     env.insert("BERRY_EMBED_TOUCH", touchModes[touchMode >= 0 && touchMode < 3 ? touchMode : 0]);
+    if (setting("detailedLog").toBool())
+        env.insert("QNX_NAV_DEBUG", "1");
 
-    const QString log = logPath();
-    if (QFileInfo(log).size() > kMaxLogBytes)
-        QFile::remove(log);
+    const QString logFile = logPath();
+    if (QFileInfo(logFile).size() > kMaxLogBytes)
+        QFile::remove(logFile);
 
     QString startUrl = m_pendingUrl;
     if (startUrl.isEmpty() && m_currentTab < m_tabs.size())
@@ -269,8 +298,8 @@ void Browser::launch()
     m_engine = new QProcess(this);
     m_engine->setProcessEnvironment(env);
     m_engine->setWorkingDirectory(QDir::homePath());
-    m_engine->setStandardOutputFile(log, QIODevice::Append);
-    m_engine->setStandardErrorFile(log, QIODevice::Append);
+    m_engine->setStandardOutputFile(logFile, QIODevice::Append);
+    m_engine->setStandardErrorFile(logFile, QIODevice::Append);
     connect(m_engine, SIGNAL(finished(int, QProcess::ExitStatus)),
             this, SLOT(engineFinished(int, QProcess::ExitStatus)));
     connect(m_engine, SIGNAL(error(QProcess::ProcessError)),
@@ -279,6 +308,10 @@ void Browser::launch()
     m_devtools->setPort(m_port);
     QStringList args = engineArguments(startUrl);
     args.insert(args.size() - 1, QString("--remote-debugging-port=%1").arg(m_port));
+    log(QString("starting engine: view %1x%2, render %3x%4, %5 cores, %6 fps, DevTools port %7, group %8")
+            .arg(m_width).arg(m_height).arg(renderWidth).arg(renderHeight)
+            .arg(cores).arg(fps).arg(m_port).arg(env.value("BERRY_EMBED_GROUP")));
+    log("arguments: " + args.join(" "));
     m_engine->start(dir + "/content_shell.exe", args);
 
     m_url = startUrl;
@@ -323,8 +356,15 @@ QStringList Browser::engineArguments(const QString &startUrl) const
          << "--no-default-browser-check"
          << "--disable-component-update"
          << "--autoplay-policy=no-user-gesture-required"
-         << "--disable-accelerated-video-decode"
-         << "--disable-logging";
+         << "--disable-accelerated-video-decode";
+    // Chromium's own logging costs CPU; Settings can turn it on to diagnose.
+    if (setting("detailedLog").toBool())
+        args << "--enable-logging=stderr";
+    else
+        args << "--disable-logging";
+    // A touch device scrolls by dragging; desktop scrollbars only take room.
+    if (!setting("scrollbars").toBool())
+        args << "--hide-scrollbars";
     // The engine's own certificate checks are slow and race-prone on QNX, so
     // Berry Browser skips them; Settings can turn them back on.
     if (!setting("verifyCerts").toBool())
@@ -372,8 +412,11 @@ QStringList Browser::engineArguments(const QString &startUrl) const
 
 void Browser::engineFinished(int exitCode, QProcess::ExitStatus status)
 {
-    Q_UNUSED(exitCode);
-    Q_UNUSED(status);
+    log(QString("engine exited: %1, code %2%3")
+            .arg(status == QProcess::CrashExit ? "crashed" : "normal exit").arg(exitCode)
+            .arg(m_stopping ? " (restart)" : ""));
+    if (!m_stopping && m_engineState == "starting")
+        emit message(tr("The browser engine stopped while starting. Its log is %1").arg(logPath()));
     m_probe.stop();
     m_devtools->close();
     m_downloads->disconnectEngine();
@@ -388,6 +431,7 @@ void Browser::engineFinished(int exitCode, QProcess::ExitStatus status)
 
 void Browser::engineError(QProcess::ProcessError error)
 {
+    log("engine process error: " + (m_engine ? m_engine->errorString() : QString::number(error)));
     if (error == QProcess::FailedToStart) {
         m_probe.stop();
         setEngineState("failed");
@@ -407,11 +451,15 @@ void Browser::setEngineState(const QString &state)
 
 void Browser::probeEngine()
 {
-    if (m_engineState == "starting" && ++m_probeAttempts > kProbeAttempts) {
-        m_probe.stop();
-        setEngineState("failed");
-        emit message(tr("The browser engine did not answer. Its log is %1").arg(logPath()));
-        return;
+    if (m_engineState == "starting") {
+        ++m_probeAttempts;
+        if (m_probeAttempts == kSlowStartProbes || m_probeAttempts == kVerySlowStartProbes) {
+            log(QString("no DevTools answer on port %1 after %2 s; engine still running")
+                    .arg(m_port).arg(m_probeAttempts * kProbeMs / 1000));
+            emit message(m_probeAttempts == kSlowStartProbes
+                ? tr("The engine is still starting. The first start can take a minute or two.")
+                : tr("The engine is taking unusually long. Its log is %1").arg(logPath()));
+        }
     }
     m_devtools->listTargets();
 }
@@ -438,6 +486,9 @@ void Browser::targetsListed(const QVariantList &targets)
 void Browser::attached()
 {
     const bool firstAttach = m_engineState != "running";
+    if (firstAttach)
+        log(QString("connected to DevTools on port %1 after %2 s")
+                .arg(m_port).arg(m_probeAttempts * kProbeMs / 1000.0, 0, 'f', 1));
     m_pageActive = true;
     setEngineState("running");
     m_probe.start(kWatchMs);
@@ -1143,7 +1194,8 @@ QVariant Browser::setting(const QString &key) const
     }
     if (key == "rotation" || key == "touchMode" || key == "fps")
         return m_settings.value(key, 0).toInt();
-    if (key == "desktop" || key == "verifyCerts" || key == "swipeNavigation" || key == "wasmLite")
+    if (key == "desktop" || key == "verifyCerts" || key == "swipeNavigation" || key == "wasmLite"
+        || key == "scrollbars" || key == "detailedLog")
         return m_settings.value(key, false).toBool();
     if (key == "javascript" || key == "images" || key == "suggestions" || key == "pauseInBackground")
         return m_settings.value(key, true).toBool();

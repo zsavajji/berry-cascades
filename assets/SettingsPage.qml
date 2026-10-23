@@ -1,4 +1,4 @@
-import bb.cascades 1.2
+import bb.cascades 1.3
 import bb.system 1.2
 
 Page {
@@ -171,6 +171,54 @@ Page {
                 text: qsTr("Verify HTTPS certificates (slower)")
                 checked: browser.setting("verifyCerts")
                 onCheckedChanged: browser.setSetting("verifyCerts", checked)
+            }
+
+            CheckBox {
+                topMargin: 20
+                text: qsTr("Show scrollbars")
+                checked: browser.setting("scrollbars")
+                onCheckedChanged: browser.setSetting("scrollbars", checked)
+            }
+
+            Header {
+                topMargin: 30
+                title: qsTr("Engine log")
+            }
+            Label {
+                text: browser.logPath()
+                multiline: true
+                textStyle.base: SystemDefaults.TextStyles.SubtitleText
+            }
+            CheckBox {
+                topMargin: 20
+                text: qsTr("Detailed engine log (slower)")
+                checked: browser.setting("detailedLog")
+                onCheckedChanged: browser.setSetting("detailedLog", checked)
+            }
+            Container {
+                topMargin: 20
+                layout: StackLayout {
+                    orientation: LayoutOrientation.LeftToRight
+                }
+                Button {
+                    text: logView.visible ? qsTr("Refresh log") : qsTr("Show log")
+                    onClicked: {
+                        logView.text = browser.logTail()
+                        logView.visible = true
+                    }
+                }
+                Button {
+                    text: qsTr("Copy log")
+                    onClicked: browser.copyText(browser.logTail())
+                }
+            }
+            TextArea {
+                id: logView
+                visible: false
+                editable: false
+                preferredHeight: ui.du(60)
+                textStyle.base: SystemDefaults.TextStyles.SmallText
+                textStyle.fontFamily: "Monospace"
             }
 
             Header {

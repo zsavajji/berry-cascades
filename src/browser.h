@@ -115,6 +115,10 @@ public:
     // hidden under a menu or dialog; answered by snapshotReady.
     Q_INVOKABLE void snapshot();
 
+    // The engine's output and the app's own lines about it.
+    Q_INVOKABLE QString logPath() const;
+    Q_INVOKABLE QString logTail() const;
+
     Q_INVOKABLE QVariant setting(const QString &key) const;
     Q_INVOKABLE void setSetting(const QString &key, const QVariant &value);
 
@@ -172,7 +176,7 @@ private:
     void saveTabs();
     QString fixUp(const QString &input) const;
     QString engineDir() const;
-    QString logPath() const;
+    void log(const QString &line) const;
     QStringList engineArguments(const QString &startUrl) const;
 
     History *m_history;

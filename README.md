@@ -156,8 +156,13 @@ only be confirmed on a phone:
   `Input.dispatchKeyEvent`, using Cascades' `KeyEvent.key` (sys/keycodes.h for
   special keys).
 
-The engine writes its log to `/accounts/1000/shared/misc/berry-cascades-engine.log`
-(or `engine.log` in the app's data folder without shared-files access).
+The engine log is `/accounts/1000/shared/misc/berry-cascades-engine.log`
+(the **misc** folder in File Manager), or `engine.log` in the app's data
+folder when the app has no shared-files access. Settings → Engine log shows
+its path and its last 24 KB, and can copy it. Besides the engine's output it
+has the app's own lines (`[berry-cascades …]`): each start with its size, port
+and flags, the DevTools connection, and the exit code if the engine stops.
+*Detailed engine log* adds Chromium's own logging.
 
 ### Trade-offs
 
