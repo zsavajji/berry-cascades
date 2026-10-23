@@ -29,6 +29,25 @@
     return window;
   };
 
+  // ---- swipe to go back/forward ----------------------------------------
+  // The engine turns a horizontal overscroll into Back/Forward unless the
+  // page's root says overscroll-behavior-x: none. Off unless Settings turns
+  // it on; Browser also applies this after every load, which keeps it
+  // working when the page's JavaScript is off.
+
+  var swipe = false;
+
+  function applySwipe() {
+    var els = [document.documentElement, document.body];
+    for (var i = 0; i < els.length; i++) {
+      if (!els[i]) continue;
+      if (swipe) els[i].style.removeProperty("overscroll-behavior-x");
+      else els[i].style.setProperty("overscroll-behavior-x", "none", "important");
+    }
+  }
+  applySwipe();
+  document.addEventListener("DOMContentLoaded", applySwipe);
+
   // ---- touches and long press ------------------------------------------
 
   var press = null;
@@ -280,6 +299,10 @@
   // ---- called by Browser -------------------------------------------------
 
   window.__berry = {
+    setSwipe: function (on) {
+      swipe = !!on;
+      applySwipe();
+    },
     selectionText: function () {
       return getSelection().toString();
     },

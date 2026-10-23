@@ -151,6 +151,7 @@ private:
     void pageEvent(const QVariantMap &event);
     int evaluate(const QString &expression, const QString &purpose);
     void keyEvent(const QString &type, const QVariantMap &fields);
+    void applySwipe();
     void updateCurrentTab();
     void saveTabs();
     QString fixUp(const QString &input) const;

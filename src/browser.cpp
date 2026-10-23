@@ -415,6 +415,7 @@ void Browser::attached()
     m_devtools->call("Page.addScriptToEvaluateOnNewDocument", script);
     evaluate(m_pageScript, QString());
     m_devtools->call("Page.getFrameTree");
+    applySwipe();
     refreshHistory();
     if (firstAttach)
         m_downloads->connectEngine(m_port);
@@ -536,9 +537,10 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
                 emit editingChanged();
             }
         }
-    } else if (method == "Page.navigatedWithinDocument"
-               || method == "Page.domContentEventFired"
-               || method == "Page.loadEventFired") {
+    } else if (method == "Page.domContentEventFired" || method == "Page.loadEventFired") {
+        m_historyTimer.start();
+        applySwipe();
+    } else if (method == "Page.navigatedWithinDocument") {
         m_historyTimer.start();
     } else if (method == "Runtime.bindingCalled") {
         if (params.value("name").toString() == kBinding) {
@@ -933,6 +935,14 @@ void Browser::find(const QString &text, bool backwards)
              "find");
 }
 
+// Swipe to go back/forward, as the "swipeNavigation" setting says.
+void Browser::applySwipe()
+{
+    evaluate(QString("window.__berry&&__berry.setSwipe(%1)")
+                 .arg(setting("swipeNavigation").toBool() ? "true" : "false"),
+             QString());
+}
+
 void Browser::stopFind()
 {
     evaluate("getSelection().removeAllRanges()", QString());
@@ -1016,7 +1026,7 @@ QVariant Browser::setting(const QString &key) const
     }
     if (key == "rotation" || key == "touchMode")
         return m_settings.value(key, 0).toInt();
-    if (key == "desktop" || key == "verifyCerts")
+    if (key == "desktop" || key == "verifyCerts" || key == "swipeNavigation")
         return m_settings.value(key, false).toBool();
     if (key == "javascript" || key == "images" || key == "suggestions")
         return m_settings.value(key, true).toBool();
@@ -1032,6 +1042,8 @@ void Browser::setSetting(const QString &key, const QVariant &value)
     m_settings.setValue(key, value);
     if (key == "search")
         emit searchChanged();
+    if (key == "swipeNavigation")
+        applySwipe();
     if (isEngineSetting(key) && !m_restartNeeded) {
         m_restartNeeded = true;
         emit restartNeededChanged();

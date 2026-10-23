@@ -32,7 +32,13 @@ around it instead:
   bar while one is focused), and the hardware keyboard types into the page.
 - **Downloads**: pages' downloads and saved images go to the shared
   Downloads folder; the Downloads sheet shows progress and opens files.
-- **Settings**: search engine, home page, suggestions, desktop sites,
+- **Swipe navigation** off by default: a sideways swipe at the edge of a
+  page does not go back or forward. Settings can turn it on. It is
+  Chromium's overscroll history navigation, which has no switch in this
+  engine build, so the page script sets `overscroll-behavior-x: none` on the
+  page's root, which Chromium honours; Browser re-applies it after every
+  load so it holds with JavaScript off too.
+- **Settings**: search engine, home page, suggestions, swipe navigation, desktop sites,
   JavaScript, images, rendering resolution, HTTPS certificate checks,
   clear history/cache/cookies, and two engine-window corrections (below).
 - Other apps can open `http`/`https` links in it.

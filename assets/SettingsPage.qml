@@ -68,6 +68,12 @@ Page {
             }
             CheckBox {
                 topMargin: 20
+                text: qsTr("Swipe sideways to go back and forward")
+                checked: browser.setting("swipeNavigation")
+                onCheckedChanged: browser.setSetting("swipeNavigation", checked)
+            }
+            CheckBox {
+                topMargin: 20
                 text: qsTr("Request desktop sites")
                 checked: browser.setting("desktop")
                 onCheckedChanged: browser.setSetting("desktop", checked)

@@ -2,8 +2,8 @@
 <qnx xmlns="http://www.qnx.com/schemas/application/1.0">
     <id>io.github.zsavajji.berrycascades</id>
     <name>Berry Cascades</name>
-    <versionNumber>0.2.0</versionNumber>
-    <buildId>2</buildId>
+    <versionNumber>0.2.1</versionNumber>
+    <buildId>3</buildId>
     <description>A Cascades web browser on Berry Browser's Chromium engine.</description>
     <author>zsavajji</author>
 
