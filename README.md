@@ -65,6 +65,12 @@ does about it (pausing pages when minimized, the image-decode budget,
 CPU-aware raster threads and frame cap, lighter WebAssembly), and what is
 left for an engine build (ThinLTO, PGO).
 
+## A lighter engine
+
+See [docs/WEBKIT.md](docs/WEBKIT.md): replacing Chromium with WPE WebKit
+(2.54, Skia on the GPU), what WebKit already supports on QNX, the C++
+toolchain gap, and a milestone plan.
+
 ## How it works
 
 ```
