@@ -1,0 +1,5 @@
+build/
+engine/
+assets/.assets.index
+*.bar
+*.tar.gz

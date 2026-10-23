@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<qnx xmlns="http://www.qnx.com/schemas/application/1.0">
+    <id>io.github.zsavajji.berrycascades</id>
+    <name>Berry Cascades</name>
+    <versionNumber>0.1.0</versionNumber>
+    <buildId>1</buildId>
+    <description>A Cascades web browser on Berry Browser's Chromium engine.</description>
+    <author>zsavajji</author>
+
+    <icon>
+        <image>assets/icon.png</image>
+    </icon>
+
+    <initialWindow>
+        <autoOrients>false</autoOrients>
+        <aspectRatio>portrait</aspectRatio>
+        <systemChrome>none</systemChrome>
+    </initialWindow>
+
+    <configuration name="Device-Release">
+        <platformArchitecture>armle-v7</platformArchitecture>
+        <asset path="build/app/berrycascades" entry="true" type="Qnx/Elf">berrycascades</asset>
+        <!-- LD_PRELOADed into the engine: puts its window in this app's
+             window group (shim/berry_embed.c). -->
+        <asset path="build/lib/libberryembed.so" type="Qnx/Elf">lib/libberryembed.so</asset>
+        <!-- Berry Browser's prebuilt Chromium engine and its runtime
+             (tools/fetch-engine.sh). -->
+        <asset path="engine/content_shell.exe" type="Qnx/Elf">engine/content_shell.exe</asset>
+        <asset path="engine/libstdc++.so.6" type="Qnx/Elf">engine/libstdc++.so.6</asset>
+        <asset path="engine/libgcc_s.so.1" type="Qnx/Elf">engine/libgcc_s.so.1</asset>
+        <asset path="engine/libm.so.2" type="Qnx/Elf">engine/libm.so.2</asset>
+        <asset path="engine/libasound.so.2" type="Qnx/Elf">engine/libasound.so.2</asset>
+    </configuration>
+
+    <asset path="engine/content_shell.pak">engine/content_shell.pak</asset>
+    <asset path="engine/shell_resources.pak">engine/shell_resources.pak</asset>
+    <asset path="engine/ui_resources_100_percent.pak">engine/ui_resources_100_percent.pak</asset>
+    <asset path="engine/icudtl.dat">engine/icudtl.dat</asset>
+    <asset path="engine/snapshot_blob.bin">engine/snapshot_blob.bin</asset>
+    <asset path="engine/root_store.certs">engine/root_store.certs</asset>
+    <asset path="assets">assets</asset>
+
+    <!-- Other apps can open http and https links here. -->
+    <invoke-target id="io.github.zsavajji.berrycascades">
+        <invoke-target-type>application</invoke-target-type>
+        <invoke-target-name>Berry Cascades</invoke-target-name>
+        <icon>
+            <image>assets/icon.png</image>
+        </icon>
+        <filter>
+            <action>bb.action.OPEN</action>
+            <action>bb.action.VIEW</action>
+            <mime-type>*</mime-type>
+            <property var="uris" value="http://,https://"/>
+        </filter>
+    </invoke-target>
+
+    <permission system="true">run_native</permission>
+    <permission>access_internet</permission>
+    <permission>access_shared</permission>
+    <permission>run_when_backgrounded</permission>
+    <env var="LD_LIBRARY_PATH" value="app/native/lib:/usr/lib/qt4/lib"/>
+    <env var="CASCADES_THEME" value="dark"/>
+</qnx>
