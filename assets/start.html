@@ -50,13 +50,16 @@
     <a href="https://www.openstreetmap.org/">Maps</a>
     <a href="https://text.npr.org/">NPR Text</a>
   </div>
-  <p>Type an address or a search in the bar above, or here. Bookmarks and
+  <p>Type an address or a search in the bar above, or here. Hold a link or an
+     image for more, or hold text to select it. Tabs, bookmarks, history and
      settings are in the menu.</p>
 <script>
   var engines = {
     duckduckgo: "https://duckduckgo.com/?q=",
+    ddglite: "https://html.duckduckgo.com/html/?q=",
     google: "https://www.google.com/search?q=",
-    bing: "https://www.bing.com/search?q="
+    bing: "https://www.bing.com/search?q=",
+    wikipedia: "https://en.m.wikipedia.org/w/index.php?search="
   };
   var m = /[?&]engine=(\w+)/.exec(location.search);
   var base = engines[(m && m[1]) || "duckduckgo"] || engines.duckduckgo;

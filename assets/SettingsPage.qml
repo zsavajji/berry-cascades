@@ -1,4 +1,5 @@
 import bb.cascades 1.2
+import bb.system 1.2
 
 Page {
     id: settingsPage
@@ -41,8 +42,10 @@ Page {
             DropDown {
                 title: qsTr("Search engine")
                 Option { text: "DuckDuckGo"; value: "duckduckgo" }
+                Option { text: qsTr("DuckDuckGo Lite (no JavaScript)"); value: "ddglite" }
                 Option { text: "Google"; value: "google" }
                 Option { text: "Bing"; value: "bing" }
+                Option { text: "Wikipedia"; value: "wikipedia" }
                 id: searchDropDown
                 onCreationCompleted: selectByValue(searchDropDown, browser.setting("search"))
                 onSelectedValueChanged: browser.setSetting("search", selectedValue)
@@ -59,9 +62,61 @@ Page {
             }
             CheckBox {
                 topMargin: 20
+                text: qsTr("Address bar suggestions from bookmarks and history")
+                checked: browser.setting("suggestions")
+                onCheckedChanged: browser.setSetting("suggestions", checked)
+            }
+            CheckBox {
+                topMargin: 20
                 text: qsTr("Request desktop sites")
                 checked: browser.setting("desktop")
                 onCheckedChanged: browser.setSetting("desktop", checked)
+            }
+            CheckBox {
+                topMargin: 20
+                text: qsTr("JavaScript")
+                checked: browser.setting("javascript")
+                onCheckedChanged: browser.setSetting("javascript", checked)
+            }
+            Label {
+                text: qsTr("Long-press menus, text selection and find in page need JavaScript.")
+                multiline: true
+                textStyle.base: SystemDefaults.TextStyles.SubtitleText
+            }
+            CheckBox {
+                topMargin: 20
+                text: qsTr("Load images")
+                checked: browser.setting("images")
+                onCheckedChanged: browser.setSetting("images", checked)
+            }
+
+            Header {
+                topMargin: 30
+                title: qsTr("Storage")
+            }
+            Label {
+                text: qsTr("Downloads are saved to %1").arg(downloads.folder)
+                multiline: true
+                textStyle.base: SystemDefaults.TextStyles.SubtitleText
+            }
+            Button {
+                topMargin: 20
+                horizontalAlignment: HorizontalAlignment.Fill
+                text: qsTr("Clear history (%1)").arg(history.count)
+                enabled: history.count > 0
+                onClicked: clearHistoryDialog.show()
+            }
+            Button {
+                horizontalAlignment: HorizontalAlignment.Fill
+                text: qsTr("Clear cache")
+                enabled: browser.engineState == "running"
+                onClicked: browser.clearCache()
+            }
+            Button {
+                horizontalAlignment: HorizontalAlignment.Fill
+                text: qsTr("Clear cookies")
+                enabled: browser.engineState == "running"
+                onClicked: browser.clearCookies()
             }
 
             Header {
@@ -115,6 +170,18 @@ Page {
             }
         }
     }
+
+    attachedObjects: [
+        SystemDialog {
+            id: clearHistoryDialog
+            title: qsTr("Clear history")
+            body: qsTr("Forget all %1 visited pages?").arg(history.count)
+            onFinished: {
+                if (result == SystemUiResult.ConfirmButtonSelection)
+                    history.clear()
+            }
+        }
+    ]
 
     function selectByValue(dropDown, value) {
         for (var i = 0; i < dropDown.count(); ++i) {

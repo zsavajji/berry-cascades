@@ -1,35 +1,49 @@
 import bb.cascades 1.2
 import bb.system 1.2
 
-// One page: the address bar above, the engine's window below (a
-// ForeignWindowControl the engine's child window binds to), and the action
-// bar. The engine window is a separate Screen window drawn above this one,
-// so it is hidden while the overflow menu or a sheet is open.
+// One page: a bar on top (the address bar, or the selection or find bar), the
+// engine's window below (a ForeignWindowControl the engine's child window
+// binds to), and the action bar. The engine window is a separate Screen
+// window drawn above this one, so it is hidden whenever Cascades has
+// something to show in its place: the menu, a sheet, a dialog, suggestions.
 Page {
     id: page
     // The engine window keeps its size, so the keyboard covers the page
     // rather than squeezing it.
     resizeBehavior: PageResizeBehavior.None
 
+    property bool finding: false
+    property bool dialogOpen: false
+    property bool typing: false
+    property bool showSuggestions: address.focused && typing && address.text.length > 0
     property bool covered: actionMenuVisualState != ActionMenuVisualState.Hidden
-                           || bookmarksSheet.opened || settingsSheet.opened
+                           || bookmarksSheet.opened || historySheet.opened || tabsSheet.opened
+                           || downloadsSheet.opened || settingsSheet.opened
+                           || dialogOpen || showSuggestions
+    // What the long-press menu's rows do, in order.
+    property variant menuActions: []
+    property string menuLink
+    property string menuText
+    property string menuImage
+    property bool sharePending: false
 
     keyListeners: [
-        // Keys typed while the address bar is not focused go to the page.
+        // Keys typed while no Cascades field is focused go to the page.
         KeyListener {
             onKeyPressed: {
-                if (!address.focused && browser.engineState == "running")
+                if (!address.focused && !findField.focused && browser.engineState == "running")
                     browser.sendKey(event.key)
             }
         }
     ]
 
     content: Container {
-        id: root
         background: Color.create("#1b1a26")
         layout: StackLayout {}
 
+        // ---- address bar ---------------------------------------------------
         Container {
+            visible: !browser.selecting && !page.finding
             leftPadding: 12
             rightPadding: 12
             topPadding: 10
@@ -41,7 +55,7 @@ Page {
             TextField {
                 id: address
                 text: browser.url
-                hintText: qsTr("Search or type an address")
+                hintText: qsTr("Search %1 or type an address").arg(browser.searchName)
                 inputMode: TextFieldInputMode.Url
                 clearButtonVisible: true
                 verticalAlignment: VerticalAlignment.Center
@@ -56,9 +70,27 @@ Page {
                     }
                 }
                 onFocusedChanged: {
-                    if (!focused)
+                    page.typing = false
+                    if (focused)
+                        address.editor.setSelection(0, address.text.length)
+                    else
                         address.text = browser.url
                 }
+                onTextChanging: {
+                    if (!focused)
+                        return
+                    page.typing = true
+                    page.fillSuggestions(text)
+                }
+            }
+
+            Button {
+                visible: browser.editing && !address.focused
+                imageSource: "asset:///images/paste.png"
+                preferredWidth: 110
+                leftMargin: 10
+                verticalAlignment: VerticalAlignment.Center
+                onClicked: browser.paste()
             }
 
             ActivityIndicator {
@@ -71,6 +103,100 @@ Page {
             }
         }
 
+        // ---- selection bar: text selected in the page -------------------------
+        Container {
+            visible: browser.selecting
+            leftPadding: 12
+            rightPadding: 12
+            topPadding: 10
+            bottomPadding: 10
+            layout: StackLayout {
+                orientation: LayoutOrientation.LeftToRight
+            }
+            Button {
+                imageSource: "asset:///images/copy.png"
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                onClicked: browser.copySelection()
+            }
+            Button {
+                imageSource: "asset:///images/search.png"
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                onClicked: browser.searchSelection()
+            }
+            Button {
+                imageSource: "asset:///images/share.png"
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                onClicked: {
+                    page.share(browser.selectionText)
+                    browser.clearSelection()
+                }
+            }
+            Button {
+                imageSource: "asset:///images/selectall.png"
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                onClicked: browser.selectAll()
+            }
+            Button {
+                imageSource: "asset:///images/stop.png"
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                onClicked: browser.clearSelection()
+            }
+        }
+
+        // ---- find bar ------------------------------------------------------
+        Container {
+            visible: page.finding && !browser.selecting
+            leftPadding: 12
+            rightPadding: 12
+            topPadding: 10
+            bottomPadding: 10
+            layout: StackLayout {
+                orientation: LayoutOrientation.LeftToRight
+            }
+            TextField {
+                id: findField
+                hintText: qsTr("Find in page")
+                verticalAlignment: VerticalAlignment.Center
+                layoutProperties: StackLayoutProperties { spaceQuota: 1 }
+                input {
+                    submitKey: SubmitKey.Search
+                    onSubmitted: browser.find(findField.text, false)
+                }
+                onTextChanging: {
+                    browser.stopFind()
+                    if (text.length > 0)
+                        browser.find(text, false)
+                    else
+                        findCount.text = ""
+                }
+            }
+            Label {
+                id: findCount
+                leftMargin: 10
+                verticalAlignment: VerticalAlignment.Center
+                textStyle.color: Color.create("#8d89a6")
+            }
+            Button {
+                imageSource: "asset:///images/up.png"
+                preferredWidth: 100
+                verticalAlignment: VerticalAlignment.Center
+                onClicked: browser.find(findField.text, true)
+            }
+            Button {
+                imageSource: "asset:///images/down.png"
+                preferredWidth: 100
+                verticalAlignment: VerticalAlignment.Center
+                onClicked: browser.find(findField.text, false)
+            }
+            Button {
+                imageSource: "asset:///images/stop.png"
+                preferredWidth: 100
+                verticalAlignment: VerticalAlignment.Center
+                onClicked: page.endFind()
+            }
+        }
+
+        // ---- the page --------------------------------------------------------
         Container {
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
@@ -118,6 +244,36 @@ Page {
                     }
                 ]
             }
+
+            // Address bar suggestions: a search, then bookmarks and history.
+            Container {
+                visible: page.showSuggestions
+                horizontalAlignment: HorizontalAlignment.Fill
+                verticalAlignment: VerticalAlignment.Fill
+                background: Color.create("#1b1a26")
+                ListView {
+                    id: suggestionList
+                    dataModel: ArrayDataModel {
+                        id: suggestionModel
+                    }
+                    listItemComponents: [
+                        ListItemComponent {
+                            StandardListItem {
+                                title: ListItemData.title
+                                description: ListItemData.url
+                                imageSource: ListItemData.kind == "search" ? "asset:///images/search.png"
+                                    : ListItemData.kind == "bookmark" ? "asset:///images/bookmarks.png"
+                                    : "asset:///images/history.png"
+                            }
+                        }
+                    ]
+                    onTriggered: {
+                        var row = dataModel.data(indexPath)
+                        browser.open(row.url)
+                        address.loseFocus()
+                    }
+                }
+            }
         }
     }
 
@@ -143,6 +299,19 @@ Page {
             onTriggered: browser.forward()
         },
         ActionItem {
+            title: qsTr("New tab")
+            imageSource: "asset:///images/newtab.png"
+            onTriggered: {
+                browser.newTab("")
+                address.requestFocus()
+            }
+        },
+        ActionItem {
+            title: qsTr("Tabs (%1)").arg(browser.tabs.length)
+            imageSource: "asset:///images/tabs.png"
+            onTriggered: tabsSheet.open()
+        },
+        ActionItem {
             title: qsTr("Home")
             imageSource: "asset:///images/home.png"
             onTriggered: browser.home()
@@ -158,19 +327,44 @@ Page {
             enabled: !browser.bookmarked
             onTriggered: browser.addBookmark()
         },
-        InvokeActionItem {
+        ActionItem {
+            title: qsTr("History")
+            imageSource: "asset:///images/history.png"
+            onTriggered: historySheet.open()
+        },
+        ActionItem {
+            title: qsTr("Find in page")
+            imageSource: "asset:///images/search.png"
+            onTriggered: {
+                page.finding = true
+                findField.requestFocus()
+            }
+        },
+        ActionItem {
+            title: qsTr("Select text")
+            imageSource: "asset:///images/selectall.png"
+            onTriggered: browser.selectAll()
+        },
+        ActionItem {
+            title: qsTr("Paste")
+            imageSource: "asset:///images/paste.png"
+            enabled: browser.editing
+            onTriggered: browser.paste()
+        },
+        ActionItem {
             title: qsTr("Share link")
             imageSource: "asset:///images/share.png"
-            query {
-                mimeType: "text/plain"
-                invokeActionId: "bb.action.SHARE"
-            }
-            onTriggered: data = browser.url
+            onTriggered: page.share(browser.url)
         },
         ActionItem {
             title: qsTr("Copy link")
             imageSource: "asset:///images/copy.png"
             onTriggered: browser.copyUrl()
+        },
+        ActionItem {
+            title: qsTr("Downloads")
+            imageSource: "asset:///images/downloads.png"
+            onTriggered: downloadsSheet.open()
         },
         ActionItem {
             title: qsTr("Settings")
@@ -192,6 +386,24 @@ Page {
             }
         },
         Sheet {
+            id: historySheet
+            content: HistoryPage {
+                onDone: historySheet.close()
+            }
+        },
+        Sheet {
+            id: tabsSheet
+            content: TabsPage {
+                onDone: tabsSheet.close()
+            }
+        },
+        Sheet {
+            id: downloadsSheet
+            content: DownloadsPage {
+                onDone: downloadsSheet.close()
+            }
+        },
+        Sheet {
             id: settingsSheet
             content: SettingsPage {
                 onDone: settingsSheet.close()
@@ -199,20 +411,129 @@ Page {
         },
         SystemToast {
             id: toast
+        },
+        // The long-press menu on a link or an image.
+        SystemListDialog {
+            id: menuDialog
+            selectionMode: ListSelectionMode.Single
+            dismissOnSelection: true
+            onFinished: {
+                page.dialogOpen = false
+                var picked = menuDialog.selectedIndices
+                if (picked.length > 0)
+                    page.runMenuAction(page.menuActions[picked[0]])
+            }
+        },
+        // Sharing text from a button: set the data, and trigger once armed.
+        Invocation {
+            id: shareInvocation
+            query: InvokeQuery {
+                id: shareQuery
+                mimeType: "text/plain"
+                invokeActionId: "bb.action.SHARE"
+            }
+            onArmed: {
+                if (page.sharePending) {
+                    page.sharePending = false
+                    trigger("bb.action.SHARE")
+                }
+            }
         }
     ]
 
+    function share(text) {
+        if (!text)
+            return
+        page.sharePending = true
+        shareQuery.data = text
+        shareQuery.updateQuery()
+    }
+
+    function fillSuggestions(text) {
+        suggestionModel.clear()
+        if (text.length == 0)
+            return
+        var search = {
+            kind: "search",
+            title: qsTr("Search %1 for “%2”").arg(browser.searchName).arg(text),
+            url: browser.searchUrl(text)
+        }
+        var rows = browser.setting("suggestions") ? browser.suggest(text) : []
+        if (browser.looksLikeAddress(text))
+            rows.push(search)
+        else
+            rows.unshift(search)
+        suggestionModel.append(rows)
+    }
+
+    function endFind() {
+        page.finding = false
+        findField.text = ""
+        findCount.text = ""
+        browser.stopFind()
+    }
+
+    function showMenu(link, linkText, image) {
+        var titles = []
+        var actions = []
+        if (link) {
+            titles.push(qsTr("Open"), qsTr("Open in new tab"), qsTr("Copy link"), qsTr("Share link"))
+            actions.push("open", "newTab", "copyLink", "shareLink")
+            if (linkText) {
+                titles.push(qsTr("Copy link text"))
+                actions.push("copyText")
+            }
+        }
+        if (image) {
+            titles.push(qsTr("Open image"), qsTr("Save image"), qsTr("Copy image address"))
+            actions.push("openImage", "saveImage", "copyImage")
+            if (!link) {
+                titles.push(qsTr("Share image address"))
+                actions.push("shareImage")
+            }
+        }
+        page.menuLink = link
+        page.menuText = linkText
+        page.menuImage = image
+        page.menuActions = actions
+        menuDialog.title = link ? link : image
+        menuDialog.clearList()
+        for (var i = 0; i < titles.length; ++i)
+            menuDialog.appendItem(titles[i])
+        page.dialogOpen = true
+        menuDialog.show()
+    }
+
+    function runMenuAction(action) {
+        if (action == "open") browser.open(page.menuLink)
+        else if (action == "newTab") browser.newTab(page.menuLink)
+        else if (action == "copyLink") browser.copyText(page.menuLink)
+        else if (action == "shareLink") page.share(page.menuLink)
+        else if (action == "copyText") browser.copyText(page.menuText)
+        else if (action == "openImage") browser.open(page.menuImage)
+        else if (action == "saveImage") downloads.save(page.menuImage)
+        else if (action == "copyImage") browser.copyText(page.menuImage)
+        else if (action == "shareImage") page.share(page.menuImage)
+    }
+
     onCreationCompleted: {
-        browser.message.connect(function (text) {
+        var notify = function (text) {
             toast.body = text
             toast.show()
-        })
+        }
+        browser.message.connect(notify)
+        downloads.message.connect(notify)
         browser.pageTouched.connect(function () {
             address.loseFocus()
+            findField.loseFocus()
         })
         browser.pageChanged.connect(function () {
             if (!address.focused)
                 address.text = browser.url
+        })
+        browser.contextMenu.connect(page.showMenu)
+        browser.findResult.connect(function (found, count) {
+            findCount.text = found || count > 0 ? qsTr("%1 found").arg(count) : qsTr("Not found")
         })
     }
 }

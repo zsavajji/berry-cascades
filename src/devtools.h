@@ -13,8 +13,9 @@ class QTcpSocket;
 // Qt 4 has no WebSocket or JSON classes, so this carries a minimal RFC 6455
 // client (text frames, ping/pong, close) and uses bb::data::JsonDataAccess.
 //
-// listTargets() asks the HTTP endpoint for /json/list; attach() opens the
-// page's WebSocket. Replies to call() arrive as replied(id, method, result),
+// listTargets() asks the HTTP endpoint for /json/list and attach() opens a
+// page's WebSocket; fetchVersion() and attachBrowser() do the same for the
+// browser target. Replies to call() arrive as replied(id, method, result),
 // protocol events as event(method, params).
 class DevTools : public QObject
 {
@@ -24,7 +25,9 @@ public:
 
     void setPort(int port);
     void listTargets();
+    void fetchVersion();
     void attach(const QString &targetId);
+    void attachBrowser(const QString &webSocketUrl);
     void close();
     bool isAttached() const;
     bool isConnecting() const;
@@ -34,6 +37,7 @@ public:
 
 signals:
     void targetsListed(const QVariantList &targets);
+    void versionFetched(const QVariantMap &version);
     void targetsFailed();
     void attached();
     void detached();
@@ -50,17 +54,21 @@ private slots:
     void wsClosed();
 
 private:
+    void fetch(const QByteArray &path);
+    void open(const QByteArray &path);
     void sendFrame(int opcode, const QByteArray &payload);
     void handleMessage(const QByteArray &text);
     bool parseFrames();
 
     int m_port;
     QTcpSocket *m_http;
+    QByteArray m_httpPath;
     QByteArray m_httpBuffer;
     bool m_httpDone;
 
     QTcpSocket *m_ws;
     QString m_targetId;
+    QByteArray m_wsPath;
     QByteArray m_wsKey;
     QByteArray m_wsBuffer;
     QByteArray m_fragments;

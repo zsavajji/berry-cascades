@@ -9,15 +9,40 @@ Berry Browser draws its own toolbar with Skia inside the engine. Berry
 Cascades runs the same engine with that toolbar off and puts Cascades
 around it instead:
 
-- **Address bar** (top): type an address or a search; Go loads it. The
-  spinner shows while a page loads.
-- **Action bar**: Back, Reload/Stop, Forward; in the menu, Home, Bookmarks,
-  Add bookmark, Share link, Copy link, Settings, Restart engine.
-- **Bookmarks** sheet: tap to open, hold to delete.
-- **Settings** sheet: search engine (DuckDuckGo, Google, Bing), home page,
-  desktop sites, rendering resolution, HTTPS certificate checks, and two
-  engine-window corrections (below).
+- **Address bar** (top): type an address or a search; Go loads it. While
+  you type, it suggests a search with your search engine, then matching
+  bookmarks and history. The spinner shows while a page loads.
+- **Search**: DuckDuckGo by default; also DuckDuckGo Lite (the html/ page,
+  which works with JavaScript off), Google, Bing and Wikipedia.
+- **Action bar**: Back, Reload/Stop, Forward; in the menu, New tab, Tabs,
+  Home, Bookmarks, Add bookmark, History, Find in page, Select text, Paste,
+  Share link, Copy link, Downloads, Settings, Restart engine.
+- **Tabs**, as in webmee: tabs are addresses, not running pages. The engine
+  shows one page; switching loads the tab's address and puts it back where
+  it was scrolled to.
+- **History**: every page visited, newest first, searchable; hold to delete
+  one, or clear it all.
+- **Long press** on a link or an image: Open, Open in new tab, Copy link,
+  Share link, Copy link text; Open image, Save image, Copy image address.
+- **Text selection**: hold on text to select a word, then drag the handles.
+  The bar on top copies it, searches for it in a new tab, shares it,
+  selects all, or ends the selection. A tap on the page ends it too.
+- **Find in page**, with the number of matches and previous/next.
+- **Paste** into the page's focused field (a button appears in the address
+  bar while one is focused), and the hardware keyboard types into the page.
+- **Downloads**: pages' downloads and saved images go to the shared
+  Downloads folder; the Downloads sheet shows progress and opens files.
+- **Settings**: search engine, home page, suggestions, desktop sites,
+  JavaScript, images, rendering resolution, HTTPS certificate checks,
+  clear history/cache/cookies, and two engine-window corrections (below).
 - Other apps can open `http`/`https` links in it.
+
+The features beyond navigation follow
+[webmee](https://github.com/zsavajji/webmee)'s list (its Harmattan shell
+around WPE): search engines, history suggestions, tabs as addresses,
+long-press menus, downloads, content settings and storage.
+Not carried over: HTTP authentication and saved passwords, page width,
+and hiding the address bar on scroll (the engine window cannot resize).
 
 ## How it works
 
@@ -46,10 +71,16 @@ around it instead:
   `Page.navigateToHistoryEntry`, `Page.reload`, `Page.stopLoading`, and
   `Input.dispatchKeyEvent` for the hardware keyboard. Page events keep the
   address bar, title and Back/Forward up to date.
-- Touches go straight to the engine's window. A page script reports them
-  through a DevTools binding so the address bar gives up the keyboard.
-  The script also keeps `target=_blank` links and `window.open()` in the one
-  window, because the engine's extra windows have no UI here.
+- `assets/page.js` runs in every page. It reports touches (so the address
+  bar gives up the keyboard), long presses, text selection and focused
+  fields through a DevTools binding, and draws the selection handles. It also
+  keeps `target=_blank` links and `window.open()` in the one window, because
+  the engine's extra windows have no UI here. Page event listeners only run
+  with JavaScript on, so long-press menus, selection and find need it.
+- `src/downloads.cpp` sets the engine's download folder through the browser
+  target (`Browser.setDownloadBehavior`), and saves images itself with Qt,
+  trusting the engine's root certificates.
+- `src/history.cpp` keeps the visited pages in `history.json`.
 - The engine's window is drawn above the Cascades window, so it is hidden
   while the menu or a sheet is open.
 
@@ -87,9 +118,12 @@ DDPB. It installs next to Berry Browser.
 
 ## Status
 
-The app, the shim and the package build cleanly with the 10.3.1 SDK. Its
-DevTools sequence was checked against desktop Chromium: handshake, binding,
-navigation, history, typing. **It has not been run on a BlackBerry yet.** These parts can
+The app, the shim and the package build cleanly with the 10.3.1 SDK, and the
+QML passes a syntax check. Against desktop Chromium with emulated touches:
+the DevTools sequence (handshake, binding, navigation, history, typing),
+`page.js` (tap, long press on text, link and image, dragging a selection
+handle, ending a selection, focused fields, find, select all, `window.open`)
+and the download flow. **It has not been run on a BlackBerry yet.** These parts can
 only be confirmed on a phone:
 
 - **The child window.** Joining the Cascades group should make the engine
@@ -109,7 +143,8 @@ The engine writes its log to `/accounts/1000/shared/misc/berry-cascades-engine.l
 
 ### Trade-offs
 
-- **One page.** No tabs; new-window links open in place.
+- **One page at a time.** Tabs are addresses; new-window links open in
+  place, and all tabs share one back/forward history.
 - **Certificates.** Like Berry Browser, the engine skips HTTPS certificate
   verification by default (`--ignore-certificate-errors`), because it is slow
   and unreliable on QNX. Traffic is still encrypted, but a man in the middle

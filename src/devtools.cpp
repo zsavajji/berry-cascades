@@ -64,8 +64,19 @@ void DevTools::setPort(int port)
 
 void DevTools::listTargets()
 {
+    fetch("/json/list");
+}
+
+void DevTools::fetchVersion()
+{
+    fetch("/json/version");
+}
+
+void DevTools::fetch(const QByteArray &path)
+{
     if (m_http)
         return;
+    m_httpPath = path;
     m_httpBuffer.clear();
     m_httpDone = false;
     m_http = new QTcpSocket(this);
@@ -78,7 +89,7 @@ void DevTools::listTargets()
 
 void DevTools::httpConnected()
 {
-    QByteArray request = "GET /json/list HTTP/1.1\r\nHost: ";
+    QByteArray request = "GET " + m_httpPath + " HTTP/1.1\r\nHost: ";
     request += kHost;
     request += ':' + QByteArray::number(m_port) + "\r\nConnection: close\r\n\r\n";
     m_http->write(request);
@@ -105,19 +116,39 @@ void DevTools::httpFinished()
 
     int length = -1;
     int offset = bodyOffset(m_httpBuffer, &length);
-    QVariant targets;
+    QVariant body;
     if (offset >= 0 && m_httpBuffer.startsWith("HTTP/1.1 200"))
-        targets = parseJson(m_httpBuffer.mid(offset, length));
-    if (targets.type() == QVariant::List)
-        emit targetsListed(targets.toList());
+        body = parseJson(m_httpBuffer.mid(offset, length));
+    if (m_httpPath == "/json/version" && body.type() == QVariant::Map)
+        emit versionFetched(body.toMap());
+    else if (m_httpPath == "/json/list" && body.type() == QVariant::List)
+        emit targetsListed(body.toList());
     else
         emit targetsFailed();
 }
 
 void DevTools::attach(const QString &targetId)
 {
+    m_targetId = targetId;
+    open("/devtools/page/" + targetId.toUtf8());
+}
+
+// webSocketDebuggerUrl from /json/version: ws://127.0.0.1:<port>/devtools/browser/<id>
+void DevTools::attachBrowser(const QString &webSocketUrl)
+{
+    m_targetId.clear();
+    const QByteArray url = webSocketUrl.toUtf8();
+    const int path = url.indexOf("/devtools/");
+    if (path >= 0)
+        open(url.mid(path));
+}
+
+void DevTools::open(const QByteArray &path)
+{
+    const QString targetId = m_targetId;
     close();
     m_targetId = targetId;
+    m_wsPath = path;
     m_wsBuffer.clear();
     m_fragments.clear();
     m_handshaken = false;
@@ -164,7 +195,7 @@ void DevTools::wsConnected()
 {
     // No Origin header: Chromium only checks --remote-allow-origins when one
     // is sent.
-    QByteArray request = "GET /devtools/page/" + m_targetId.toUtf8() + " HTTP/1.1\r\n";
+    QByteArray request = "GET " + m_wsPath + " HTTP/1.1\r\n";
     request += "Host: " + QByteArray(kHost) + ':' + QByteArray::number(m_port) + "\r\n";
     request += "Upgrade: websocket\r\nConnection: Upgrade\r\n";
     request += "Sec-WebSocket-Key: " + m_wsKey + "\r\n";

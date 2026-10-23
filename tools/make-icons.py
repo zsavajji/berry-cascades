@@ -140,6 +140,75 @@ def restart_icon():
     save(img, "restart.png")
 
 
+def search_icon():
+    img, d = canvas()
+    arc(d, (16, 16, 50, 50), 0, 360)
+    line(d, [(46, 46), (64, 64)], width=8 * S)
+    save(img, "search.png")
+
+
+def select_all_icon():
+    img, d = canvas()
+    dash = 5 * S
+    for a, b in [((16, 16), (65, 16)), ((65, 16), (65, 65)), ((65, 65), (16, 65)), ((16, 65), (16, 16))]:
+        n = 5
+        for i in range(n):
+            t0, t1 = i / n, (i + 0.55) / n
+            line(d, [(a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0),
+                     (a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1)], width=dash)
+    for y in (32, 42, 52):
+        line(d, [(28, y), (53, y)], width=4 * S)
+    save(img, "selectall.png")
+
+
+def chevron(name, up):
+    img, d = canvas()
+    if up:
+        line(d, [(20, 50), (40.5, 29), (61, 50)])
+    else:
+        line(d, [(20, 31), (40.5, 52), (61, 31)])
+    save(img, name)
+
+
+def tabs_icon():
+    img, d = canvas()
+    line(d, [(26, 18), (64, 18), (64, 52)], width=5 * S)
+    line(d, [(16, 28), (54, 28), (54, 64), (16, 64), (16, 28)], width=5 * S)
+    save(img, "tabs.png")
+
+
+def new_tab_icon():
+    img, d = canvas()
+    line(d, [(16, 22), (52, 22), (52, 62), (16, 62), (16, 22)], width=5 * S)
+    line(d, [(62, 8), (62, 30)], width=5 * S)
+    line(d, [(51, 19), (73, 19)], width=5 * S)
+    save(img, "newtab.png")
+
+
+def history_icon():
+    img, d = canvas()
+    arc(d, (16, 16, 65, 65), 0, 360)
+    line(d, [(40.5, 26), (40.5, 41), (52, 48)], width=5 * S)
+    save(img, "history.png")
+
+
+def paste_icon():
+    img, d = canvas()
+    line(d, [(30, 18), (18, 18), (18, 66), (63, 66), (63, 18), (51, 18)], width=5 * S)
+    line(d, [(30, 12), (51, 12), (51, 24), (30, 24), (30, 12)], width=5 * S)
+    for y in (38, 48):
+        line(d, [(29, y), (52, y)], width=4 * S)
+    save(img, "paste.png")
+
+
+def downloads_icon():
+    img, d = canvas()
+    line(d, [(40.5, 14), (40.5, 50)])
+    line(d, [(26, 37), (40.5, 51), (55, 37)])
+    line(d, [(16, 54), (16, 65), (65, 65), (65, 54)])
+    save(img, "downloads.png")
+
+
 def app_icon():
     size = 114 * S
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -170,4 +239,13 @@ if __name__ == "__main__":
     share_icon()
     copy_icon()
     restart_icon()
+    search_icon()
+    select_all_icon()
+    chevron("up.png", True)
+    chevron("down.png", False)
+    tabs_icon()
+    new_tab_icon()
+    history_icon()
+    paste_icon()
+    downloads_icon()
     app_icon()

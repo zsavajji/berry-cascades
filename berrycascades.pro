@@ -10,8 +10,8 @@ QMAKE_LFLAGS += -Wl,-rpath-link,$${QNX_DIR}/$${QNX_CPUDIR}/usr/lib/qt4/lib
 QMAKE_CXXFLAGS += -Wno-psabi -fstack-protector-strong
 DEFINES += _FORTIFY_SOURCE=2
 
-SOURCES += src/main.cpp src/browser.cpp src/devtools.cpp
-HEADERS += src/browser.h src/devtools.h
+SOURCES += src/main.cpp src/browser.cpp src/devtools.cpp src/downloads.cpp src/history.cpp
+HEADERS += src/browser.h src/devtools.h src/downloads.h src/history.h
 
 DESTDIR = app
 OBJECTS_DIR = obj

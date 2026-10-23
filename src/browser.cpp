@@ -9,17 +9,23 @@
 
 #include <bb/cascades/Application>
 #include <bb/cascades/Window>
+#include <bb/data/JsonDataAccess>
 #include <bb/system/Clipboard>
 #include <bb/system/InvokeManager>
 #include <bb/system/InvokeRequest>
+
+#include "downloads.h"
+#include "history.h"
 
 namespace {
 
 const char kWindowId[] = "berryEngineWindow";
 const char kSharedMisc[] = "/accounts/1000/shared/misc";
+const char kBinding[] = "__berryEvent";
 const int kProbeMs = 500;
 const int kProbeAttempts = 120;  // the engine takes 5-20 s to come up
 const int kWatchMs = 3000;
+const int kMaxTabs = 20;
 const qint64 kMaxLogBytes = 2 * 1024 * 1024;
 
 // Fraction of the web view's pixels the engine renders, before the window
@@ -27,42 +33,53 @@ const qint64 kMaxLogBytes = 2 * 1024 * 1024;
 // "quality" setting.
 const double kRenderScales[] = {0.375, 0.5, 0.75, 1.0};
 
-// Run in every page. One window, one page: links and window.open() that
-// would open a new window navigate this one, since the engine's extra windows
-// have no UI here. And touches are reported through the __berryTouched
-// binding, since they go straight to the engine's window and Cascades would
-// otherwise leave the keyboard with the address bar.
-const char kTouchBinding[] = "__berryTouched";
-const char kPageScript[] =
-    "(function(){"
-    "if(window.__berryPage)return;window.__berryPage=true;"
-    "window.open=function(u){if(u){location.href=new URL(u,location.href).href;}return window;};"
-    "document.addEventListener('click',function(e){"
-    "var a=e.target&&e.target.closest?e.target.closest('a[target]'):null;"
-    "if(a&&a.target!=='_self'&&a.href){a.target='_self';}"
-    "},true);"
-    "var last=0;"
-    "document.addEventListener('touchstart',function(){"
-    "var now=Date.now();"
-    "if(now-last>500&&window.__berryTouched){last=now;window.__berryTouched('');}"
-    "},{capture:true,passive:true});"
-    "})();";
+// The "search" setting: key, name, address the encoded terms are appended to.
+// DuckDuckGo Lite is the html/ endpoint, which works without JavaScript.
+struct SearchEngine { const char *key; const char *name; const char *url; };
+const SearchEngine kSearchEngines[] = {
+    {"duckduckgo", "DuckDuckGo", "https://duckduckgo.com/?q="},
+    {"ddglite", "DuckDuckGo Lite", "https://html.duckduckgo.com/html/?q="},
+    {"google", "Google", "https://www.google.com/search?q="},
+    {"bing", "Bing", "https://www.bing.com/search?q="},
+    {"wikipedia", "Wikipedia", "https://en.m.wikipedia.org/w/index.php?search="},
+};
+
+const SearchEngine &searchEngine(const QString &key)
+{
+    for (unsigned i = 0; i < sizeof(kSearchEngines) / sizeof(kSearchEngines[0]); ++i) {
+        if (key == kSearchEngines[i].key)
+            return kSearchEngines[i];
+    }
+    return kSearchEngines[0];
+}
 
 // Settings that are engine flags: changing one takes an engine restart.
 bool isEngineSetting(const QString &key)
 {
     return key == "quality" || key == "desktop" || key == "verifyCerts"
-        || key == "rotation" || key == "touchMode";
+        || key == "rotation" || key == "touchMode" || key == "javascript"
+        || key == "images";
+}
+
+QString jsString(const QString &s)
+{
+    QString out = s;
+    out.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n").replace('\r', "\\r");
+    out.replace(QChar(0x2028), "\\u2028").replace(QChar(0x2029), "\\u2029");
+    return '"' + out + '"';
 }
 
 }  // namespace
 
-Browser::Browser(QObject *parent)
+Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     : QObject(parent)
+    , m_history(history)
+    , m_downloads(downloads)
     , m_settings(QDir::homePath() + "/settings.ini", QSettings::IniFormat)
     , m_engine(0)
     , m_devtools(new DevTools(this))
     , m_probeAttempts(0)
+    , m_port(0)
     , m_width(0)
     , m_height(0)
     , m_stopping(false)
@@ -70,7 +87,18 @@ Browser::Browser(QObject *parent)
     , m_engineState("idle")
     , m_loading(false)
     , m_historyIndex(-1)
+    , m_currentTab(0)
+    , m_pendingScroll(0)
+    , m_selecting(false)
+    , m_editing(false)
 {
+    QFile script(QCoreApplication::applicationDirPath() + "/assets/page.js");
+    if (script.open(QIODevice::ReadOnly))
+        m_pageScript = QString::fromUtf8(script.readAll());
+
+    m_tabs = m_settings.value("tabs").toList();
+    m_currentTab = qBound(0, m_settings.value("currentTab", 0).toInt(), qMax(0, m_tabs.size() - 1));
+
     m_startTimer.setSingleShot(true);
     m_startTimer.setInterval(400);
     connect(&m_startTimer, SIGNAL(timeout()), this, SLOT(launchIfIdle()));
@@ -84,7 +112,6 @@ Browser::Browser(QObject *parent)
             this, SLOT(invoked(const bb::system::InvokeRequest&)));
 
     connect(m_devtools, SIGNAL(targetsListed(QVariantList)), this, SLOT(targetsListed(QVariantList)));
-    connect(m_devtools, SIGNAL(targetsFailed()), this, SLOT(targetsFailed()));
     connect(m_devtools, SIGNAL(attached()), this, SLOT(attached()));
     connect(m_devtools, SIGNAL(detached()), this, SLOT(detached()));
     connect(m_devtools, SIGNAL(replied(int, QString, QVariantMap)),
@@ -140,6 +167,7 @@ void Browser::restartEngine()
     if (m_engine && m_engine->state() != QProcess::NotRunning) {
         m_stopping = true;
         m_devtools->close();
+        m_downloads->disconnectEngine();
         m_engine->terminate();
         QTimer::singleShot(3000, m_engine, SLOT(kill()));
     } else if (m_width > 0) {
@@ -169,13 +197,11 @@ void Browser::launch()
         return;
     }
 
-    int quality = m_settings.value("quality", -1).toInt();
-    if (quality < 0 || quality > 3)
-        quality = qMin(m_width, m_height) >= 1080 ? 0 : 1;
+    const int quality = setting("quality").toInt();
     const double scale = kRenderScales[quality];
     const int renderWidth = qMax(240, int(m_width * scale + 0.5));
     const int renderHeight = qMax(240, int(m_height * scale + 0.5));
-    const int port = 9300 + (qrand() % 500);
+    m_port = 9300 + (qrand() % 500);
 
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     QString libraryPath = dir;
@@ -188,23 +214,27 @@ void Browser::launch()
     env.insert("QNX_SCREEN_HEIGHT", QString::number(renderHeight));
     env.insert("QNX_SCREEN_OUTPUT_WIDTH", QString::number(m_width));
     env.insert("QNX_SCREEN_OUTPUT_HEIGHT", QString::number(m_height));
-    env.insert("QNX_SCREEN_ROTATION", QString::number(m_settings.value("rotation", 0).toInt()));
+    env.insert("QNX_SCREEN_ROTATION", setting("rotation").toString());
     env.insert("QNX_INPUT_POLL_MS", "1");
     env.insert("QNX_MAX_FPS", "45");
     env.insert("QNX_GPU_PROBE", "0");
     env.insert("BERRY_APP_MODE", "1");
     env.insert("BERRY_EMBED_GROUP", bb::cascades::Application::instance()->mainWindow()->groupId());
     env.insert("BERRY_EMBED_ID", kWindowId);
-    env.insert("BERRY_EMBED_ROTATION", QString::number(m_settings.value("rotation", 0).toInt()));
+    env.insert("BERRY_EMBED_ROTATION", setting("rotation").toString());
     static const char *const touchModes[] = {"source", "window", "display"};
-    const int touchMode = m_settings.value("touchMode", 0).toInt();
+    const int touchMode = setting("touchMode").toInt();
     env.insert("BERRY_EMBED_TOUCH", touchModes[touchMode >= 0 && touchMode < 3 ? touchMode : 0]);
 
     const QString log = logPath();
     if (QFileInfo(log).size() > kMaxLogBytes)
         QFile::remove(log);
 
-    QString startUrl = m_pendingUrl.isEmpty() ? homeUrl() : m_pendingUrl;
+    QString startUrl = m_pendingUrl;
+    if (startUrl.isEmpty() && m_currentTab < m_tabs.size())
+        startUrl = m_tabs.at(m_currentTab).toMap().value("url").toString();
+    if (startUrl.isEmpty())
+        startUrl = homeUrl();
     m_pendingUrl.clear();
 
     if (m_engine) {
@@ -221,9 +251,9 @@ void Browser::launch()
     connect(m_engine, SIGNAL(error(QProcess::ProcessError)),
             this, SLOT(engineError(QProcess::ProcessError)));
 
-    m_devtools->setPort(port);
+    m_devtools->setPort(m_port);
     QStringList args = engineArguments(startUrl);
-    args.insert(args.size() - 1, QString("--remote-debugging-port=%1").arg(port));
+    args.insert(args.size() - 1, QString("--remote-debugging-port=%1").arg(m_port));
     m_engine->start(dir + "/content_shell.exe", args);
 
     m_url = startUrl;
@@ -233,6 +263,12 @@ void Browser::launch()
     m_mainFrameId.clear();
     emit pageChanged();
     emit historyChanged();
+    if (m_selecting || m_editing) {
+        m_selecting = m_editing = false;
+        emit selectionChanged();
+        emit editingChanged();
+    }
+    updateCurrentTab();
     setLoading(true);
     setEngineState("starting");
     m_probeAttempts = 0;
@@ -266,7 +302,7 @@ QStringList Browser::engineArguments(const QString &startUrl) const
          << "--disable-logging";
     // The engine's own certificate checks are slow and race-prone on QNX, so
     // Berry Browser skips them; Settings can turn them back on.
-    if (!m_settings.value("verifyCerts", false).toBool())
+    if (!setting("verifyCerts").toBool())
         args << "--ignore-certificate-errors";
     args << "--use-fake-ui-for-media-stream"
          << "--use-fake-device-for-media-stream"
@@ -286,10 +322,15 @@ QStringList Browser::engineArguments(const QString &startUrl) const
          << "--enable-low-end-device-mode"
          << "--disk-cache-size=268435456"
          << "--media-cache-size=268435456";
-    if (!m_settings.value("desktop", false).toBool())
+    if (!setting("desktop").toBool())
         args << "--use-mobile-user-agent";
+    QString blink = "hyperlinkAuditingEnabled=false,spellcheckEnabledByDefault=false";
+    if (!setting("javascript").toBool())
+        blink += ",scriptEnabled=false";
+    if (!setting("images").toBool())
+        blink += ",imagesEnabled=false";
     args << "--js-flags=--max-old-space-size=256"
-         << "--blink-settings=hyperlinkAuditingEnabled=false,spellcheckEnabledByDefault=false"
+         << "--blink-settings=" + blink
          << "--remote-debugging-address=127.0.0.1"
          << startUrl;
     return args;
@@ -301,6 +342,7 @@ void Browser::engineFinished(int exitCode, QProcess::ExitStatus status)
     Q_UNUSED(status);
     m_probe.stop();
     m_devtools->close();
+    m_downloads->disconnectEngine();
     if (m_stopping) {
         m_stopping = false;
         launch();
@@ -347,11 +389,10 @@ void Browser::targetsListed(const QVariantList &targets)
     QString first;
     foreach (const QVariant &t, targets) {
         const QVariantMap target = t.toMap();
-        if (target.value("type").toString() != "page")
-            continue;
-        const QString id = target.value("id").toString();
-        if (first.isEmpty())
-            first = id;
+        if (target.value("type").toString() == "page") {
+            first = target.value("id").toString();
+            break;
+        }
     }
     if (first.isEmpty())
         return;
@@ -360,26 +401,23 @@ void Browser::targetsListed(const QVariantList &targets)
     m_devtools->attach(first);
 }
 
-void Browser::targetsFailed()
-{
-}
-
 void Browser::attached()
 {
+    const bool firstAttach = m_engineState != "running";
     setEngineState("running");
     m_probe.start(kWatchMs);
     m_devtools->call("Page.enable");
     QVariantMap binding;
-    binding["name"] = QString(kTouchBinding);
+    binding["name"] = QString(kBinding);
     m_devtools->call("Runtime.addBinding", binding);
     QVariantMap script;
-    script["source"] = QString(kPageScript);
+    script["source"] = m_pageScript;
     m_devtools->call("Page.addScriptToEvaluateOnNewDocument", script);
-    QVariantMap now;
-    now["expression"] = QString(kPageScript);
-    m_devtools->call("Runtime.evaluate", now);
+    evaluate(m_pageScript, QString());
     m_devtools->call("Page.getFrameTree");
     refreshHistory();
+    if (firstAttach)
+        m_downloads->connectEngine(m_port);
     if (!m_pendingUrl.isEmpty()) {
         const QString url = m_pendingUrl;
         m_pendingUrl.clear();
@@ -398,10 +436,43 @@ void Browser::refreshHistory()
     m_devtools->call("Page.getNavigationHistory");
 }
 
+int Browser::evaluate(const QString &expression, const QString &purpose)
+{
+    QVariantMap params;
+    params["expression"] = expression;
+    params["returnByValue"] = true;
+    const int id = m_devtools->call("Runtime.evaluate", params);
+    if (id >= 0 && !purpose.isEmpty())
+        m_evaluations.insert(id, purpose);
+    return id;
+}
+
 void Browser::replied(int id, const QString &method, const QVariantMap &result)
 {
-    Q_UNUSED(id);
-    if (method == "Page.getFrameTree") {
+    if (method == "Runtime.evaluate") {
+        const QString purpose = m_evaluations.take(id);
+        const QVariant value = result.value("result").toMap().value("value");
+        if (purpose == "copy") {
+            copyText(value.toString());
+            clearSelection();
+        } else if (purpose == "search") {
+            const QString text = value.toString().simplified();
+            clearSelection();
+            if (!text.isEmpty())
+                newTab(searchUrl(text));
+        } else if (purpose == "find") {
+            const QVariantMap found = value.toMap();
+            emit findResult(found.value("found").toBool(), found.value("count").toInt());
+        } else if (purpose.startsWith("scroll:")) {
+            const int tab = purpose.mid(7).toInt();
+            if (tab >= 0 && tab < m_tabs.size()) {
+                QVariantMap row = m_tabs.at(tab).toMap();
+                row["scroll"] = value.toInt();
+                m_tabs[tab] = row;
+                saveTabs();
+            }
+        }
+    } else if (method == "Page.getFrameTree") {
         m_mainFrameId = result.value("frameTree").toMap().value("frame").toMap().value("id").toString();
     } else if (method == "Page.getNavigationHistory") {
         const QVariantList entries = result.value("entries").toList();
@@ -417,13 +488,16 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
             m_title = entry.value("title").toString();
             emit pageChanged();
             emit bookmarksChanged();
+            updateCurrentTab();
+            if (!m_loading)
+                m_history->visit(m_url, m_title);
         }
     }
 }
 
 void Browser::failed(int id, const QString &method, const QString &message)
 {
-    Q_UNUSED(id);
+    m_evaluations.remove(id);
     if (method == "Page.navigate")
         emit this->message(message);
 }
@@ -439,6 +513,10 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
         if (mainFrame) {
             setLoading(false);
             m_historyTimer.start();
+            if (m_pendingScroll > 0) {
+                evaluate(QString("window.__berry&&__berry.scrollTo(%1)").arg(m_pendingScroll), QString());
+                m_pendingScroll = 0;
+            }
         }
     } else if (method == "Page.frameNavigated") {
         const QVariantMap frame = params.value("frame").toMap();
@@ -447,17 +525,54 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
             m_url = frame.value("url").toString();
             emit pageChanged();
             m_historyTimer.start();
+            // A new document has no bindings until they are added again.
+            QVariantMap binding;
+            binding["name"] = QString(kBinding);
+            m_devtools->call("Runtime.addBinding", binding);
+            if (m_selecting || m_editing) {
+                m_selecting = m_editing = false;
+                m_selectionText.clear();
+                emit selectionChanged();
+                emit editingChanged();
+            }
         }
     } else if (method == "Page.navigatedWithinDocument"
                || method == "Page.domContentEventFired"
                || method == "Page.loadEventFired") {
         m_historyTimer.start();
     } else if (method == "Runtime.bindingCalled") {
-        if (params.value("name").toString() == kTouchBinding)
-            emit pageTouched();
+        if (params.value("name").toString() == kBinding) {
+            bb::data::JsonDataAccess json;
+            const QVariant event = json.loadFromBuffer(params.value("payload").toString().toUtf8());
+            if (!json.hasError())
+                pageEvent(event.toMap());
+        }
     } else if (method == "Inspector.targetCrashed") {
         setLoading(false);
-        emit message(tr("The page crashed."));
+        emit message(tr("The page crashed. Reload to try again."));
+    }
+}
+
+// What assets/page.js reports.
+void Browser::pageEvent(const QVariantMap &event)
+{
+    const QString type = event.value("t").toString();
+    if (type == "touch") {
+        emit pageTouched();
+    } else if (type == "menu") {
+        emit contextMenu(event.value("link").toString(), event.value("text").toString(),
+                         event.value("image").toString());
+    } else if (type == "select" || type == "selection") {
+        m_selecting = true;
+        m_selectionText = event.value("text").toString();
+        emit selectionChanged();
+    } else if (type == "selectionEnd") {
+        m_selecting = false;
+        m_selectionText.clear();
+        emit selectionChanged();
+    } else if (type == "editing") {
+        m_editing = event.value("on").toBool();
+        emit editingChanged();
     }
 }
 
@@ -492,6 +607,7 @@ void Browser::navigate(const QString &url)
 {
     m_url = url;
     emit pageChanged();
+    updateCurrentTab();
     if (!m_devtools->isAttached()) {
         m_pendingUrl = url;
         if (m_engineState == "stopped" || m_engineState == "failed")
@@ -526,6 +642,8 @@ void Browser::reload()
 {
     if (m_devtools->call("Page.reload") >= 0)
         setLoading(true);
+    else if (m_engineState == "stopped" || m_engineState == "failed")
+        restartEngine();
 }
 
 void Browser::stop()
@@ -549,35 +667,157 @@ QString Browser::homeUrl() const
         + "?engine=" + setting("search").toString();
 }
 
+bool Browser::looksLikeAddress(const QString &input) const
+{
+    const QString text = input.trimmed();
+    const QString lower = text.toLower();
+    if (lower.contains("://") || lower.startsWith("about:") || lower.startsWith("data:"))
+        return true;
+    if (text.contains(' '))
+        return false;
+    if (lower.startsWith("localhost") || lower.startsWith("127.") || lower.startsWith("192.168."))
+        return true;
+    return text.contains('.') && !text.startsWith('.') && !text.endsWith('.');
+}
+
 QString Browser::fixUp(const QString &input) const
 {
     const QString text = input.trimmed();
     if (text.isEmpty())
         return QString();
+    if (!looksLikeAddress(text))
+        return searchUrl(text);
     const QString lower = text.toLower();
     if (lower.contains("://") || lower.startsWith("about:") || lower.startsWith("data:"))
         return text;
-    if (!text.contains(' ')) {
-        if (lower.startsWith("localhost") || lower.startsWith("127.") || lower.startsWith("192.168."))
-            return "http://" + text;
-        if (text.contains('.') && !text.startsWith('.') && !text.endsWith('.'))
-            return "https://" + text;
-    }
-    return searchUrl(text);
+    if (lower.startsWith("localhost") || lower.startsWith("127.") || lower.startsWith("192.168."))
+        return "http://" + text;
+    return "https://" + text;
+}
+
+QString Browser::searchName() const
+{
+    return searchEngine(setting("search").toString()).name;
 }
 
 QString Browser::searchUrl(const QString &query) const
 {
-    const QString engine = m_settings.value("search", "duckduckgo").toString();
-    QString base = "https://duckduckgo.com/?q=";
-    if (engine == "google")
-        base = "https://www.google.com/search?q=";
-    else if (engine == "bing")
-        base = "https://www.bing.com/search?q=";
-    return base + QString::fromAscii(QUrl::toPercentEncoding(query));
+    return QString(searchEngine(setting("search").toString()).url)
+        + QString::fromAscii(QUrl::toPercentEncoding(query.trimmed()));
 }
 
-// ---- keys ----------------------------------------------------------------
+QVariantList Browser::suggest(const QString &text) const
+{
+    const QString needle = text.trimmed().toLower();
+    QVariantList out;
+    QStringList seen;
+    if (needle.isEmpty())
+        return out;
+    foreach (const QVariant &b, bookmarks()) {
+        QVariantMap row = b.toMap();
+        const QString url = row.value("url").toString();
+        if (out.size() < 3 && (url.toLower().contains(needle)
+                               || row.value("title").toString().toLower().contains(needle))) {
+            row["kind"] = QString("bookmark");
+            out.append(row);
+            seen.append(url);
+        }
+    }
+    foreach (const QVariant &h, m_history->matches(text, 8)) {
+        QVariantMap row = h.toMap();
+        if (out.size() >= 6)
+            break;
+        if (seen.contains(row.value("url").toString()))
+            continue;
+        row["kind"] = QString("history");
+        out.append(row);
+    }
+    return out;
+}
+
+// ---- tabs ----------------------------------------------------------------
+
+void Browser::updateCurrentTab()
+{
+    if (m_tabs.isEmpty()) {
+        m_tabs.append(QVariantMap());
+        m_currentTab = 0;
+    }
+    QVariantMap row = m_tabs.at(m_currentTab).toMap();
+    if (row.value("url").toString() == m_url && row.value("title").toString() == m_title)
+        return;
+    row["url"] = m_url;
+    row["title"] = m_title;
+    m_tabs[m_currentTab] = row;
+    saveTabs();
+}
+
+void Browser::saveTabs()
+{
+    m_settings.setValue("tabs", m_tabs);
+    m_settings.setValue("currentTab", m_currentTab);
+    emit tabsChanged();
+}
+
+void Browser::newTab(const QString &input)
+{
+    if (m_tabs.size() >= kMaxTabs) {
+        emit message(tr("Close a tab first: %1 is the most").arg(kMaxTabs));
+        return;
+    }
+    evaluate("window.__berry?__berry.scrollY():0", QString("scroll:%1").arg(m_currentTab));
+    const QString url = input.isEmpty() ? homeUrl() : fixUp(input);
+    QVariantMap row;
+    row["url"] = url;
+    m_tabs.append(row);
+    m_currentTab = m_tabs.size() - 1;
+    m_title.clear();
+    saveTabs();
+    m_pendingScroll = 0;
+    navigate(url);
+}
+
+void Browser::switchTab(int index)
+{
+    if (index < 0 || index >= m_tabs.size() || index == m_currentTab)
+        return;
+    evaluate("window.__berry?__berry.scrollY():0", QString("scroll:%1").arg(m_currentTab));
+    m_currentTab = index;
+    const QVariantMap row = m_tabs.at(index).toMap();
+    m_title = row.value("title").toString();
+    m_pendingScroll = row.value("scroll").toInt();
+    saveTabs();
+    navigate(row.value("url").toString().isEmpty() ? homeUrl() : row.value("url").toString());
+}
+
+void Browser::closeTab(int index)
+{
+    if (index < 0 || index >= m_tabs.size())
+        return;
+    if (m_tabs.size() == 1) {
+        m_tabs.clear();
+        m_currentTab = 0;
+        m_title.clear();
+        m_pendingScroll = 0;
+        navigate(homeUrl());
+        return;
+    }
+    m_tabs.removeAt(index);
+    if (index == m_currentTab) {
+        m_currentTab = qMin(index, m_tabs.size() - 1);
+        const QVariantMap row = m_tabs.at(m_currentTab).toMap();
+        m_title = row.value("title").toString();
+        m_pendingScroll = row.value("scroll").toInt();
+        saveTabs();
+        navigate(row.value("url").toString().isEmpty() ? homeUrl() : row.value("url").toString());
+    } else {
+        if (index < m_currentTab)
+            --m_currentTab;
+        saveTabs();
+    }
+}
+
+// ---- keys, editing, selection, find ----------------------------------------
 
 void Browser::keyEvent(const QString &type, const QVariantMap &fields)
 {
@@ -648,7 +888,72 @@ void Browser::sendKey(int key)
     keyEvent("keyUp", fields);
 }
 
-// ---- bookmarks and settings ---------------------------------------------
+void Browser::paste()
+{
+    bb::system::Clipboard clipboard;
+    const QString text = QString::fromUtf8(clipboard.value("text/plain"));
+    if (text.isEmpty()) {
+        emit message(tr("The clipboard has no text"));
+        return;
+    }
+    QVariantMap params;
+    params["text"] = text;
+    m_devtools->call("Input.insertText", params);
+}
+
+void Browser::selectAll()
+{
+    evaluate("window.__berry&&__berry.selectAll()", QString());
+}
+
+void Browser::clearSelection()
+{
+    evaluate("window.__berry&&__berry.clearSelection()", QString());
+    if (m_selecting) {
+        m_selecting = false;
+        m_selectionText.clear();
+        emit selectionChanged();
+    }
+}
+
+void Browser::copySelection()
+{
+    evaluate("window.__berry?__berry.selectionText():''", "copy");
+}
+
+void Browser::searchSelection()
+{
+    evaluate("window.__berry?__berry.selectionText():''", "search");
+}
+
+void Browser::find(const QString &text, bool backwards)
+{
+    evaluate(QString("window.__berry?__berry.find(%1,%2):{found:false,count:0}")
+                 .arg(jsString(text), backwards ? "true" : "false"),
+             "find");
+}
+
+void Browser::stopFind()
+{
+    evaluate("getSelection().removeAllRanges()", QString());
+}
+
+// ---- bookmarks, clipboard, storage, settings ------------------------------
+
+void Browser::copyText(const QString &text)
+{
+    if (text.isEmpty())
+        return;
+    bb::system::Clipboard clipboard;
+    clipboard.clear();
+    clipboard.insert("text/plain", text.toUtf8());
+    emit message(tr("Copied"));
+}
+
+void Browser::copyUrl()
+{
+    copyText(m_url);
+}
 
 QVariantList Browser::bookmarks() const
 {
@@ -689,12 +994,16 @@ void Browser::removeBookmark(const QString &url)
     emit bookmarksChanged();
 }
 
-void Browser::copyUrl()
+void Browser::clearCache()
 {
-    bb::system::Clipboard clipboard;
-    clipboard.clear();
-    clipboard.insert("text/plain", m_url.toUtf8());
-    emit message(tr("Link copied"));
+    if (m_devtools->call("Network.clearBrowserCache") >= 0)
+        emit message(tr("Cache cleared"));
+}
+
+void Browser::clearCookies()
+{
+    if (m_devtools->call("Network.clearBrowserCookies") >= 0)
+        emit message(tr("Cookies cleared"));
 }
 
 QVariant Browser::setting(const QString &key) const
@@ -709,8 +1018,10 @@ QVariant Browser::setting(const QString &key) const
         return m_settings.value(key, 0).toInt();
     if (key == "desktop" || key == "verifyCerts")
         return m_settings.value(key, false).toBool();
+    if (key == "javascript" || key == "images" || key == "suggestions")
+        return m_settings.value(key, true).toBool();
     if (key == "search")
-        return m_settings.value(key, "duckduckgo").toString();
+        return QString(searchEngine(m_settings.value(key, "duckduckgo").toString()).key);
     return m_settings.value(key).toString();
 }
 
@@ -719,6 +1030,8 @@ void Browser::setSetting(const QString &key, const QVariant &value)
     if (setting(key) == value)
         return;
     m_settings.setValue(key, value);
+    if (key == "search")
+        emit searchChanged();
     if (isEngineSetting(key) && !m_restartNeeded) {
         m_restartNeeded = true;
         emit restartNeededChanged();
