@@ -36,6 +36,7 @@ Page {
     property string menuText
     property string menuImage
     property bool sharePending: false
+    property bool backCancels: false   // the address was being edited when Back went down
 
     keyListeners: [
         // Keys typed while no Cascades field is focused go to the page.
@@ -165,7 +166,7 @@ Page {
             // ---- the bar ---------------------------------------------------
             Container {
                 horizontalAlignment: HorizontalAlignment.Fill
-                preferredHeight: ui.du(10)
+                preferredHeight: ui.du(8.5)
                 background: Color.create("#262626")
                 layout: DockLayout {}
 
@@ -181,14 +182,14 @@ Page {
                     Container {
                         verticalAlignment: VerticalAlignment.Center
                         layout: DockLayout {}
-                        leftPadding: ui.du(1.5)
-                        rightPadding: ui.du(1.5)
+                        leftPadding: ui.du(1.2)
+                        rightPadding: ui.du(1.2)
                         visible: !address.focused
                         ImageButton {
                             defaultImageSource: "asset:///images/tabs.png"
                             pressedImageSource: "asset:///images/tabs.png"
-                            preferredWidth: ui.du(6.5)
-                            preferredHeight: ui.du(6.5)
+                            preferredWidth: ui.du(5.5)
+                            preferredHeight: ui.du(5.5)
                             onClicked: tabsSheet.open()
                         }
                         Label {
@@ -203,21 +204,33 @@ Page {
                             touchPropagationMode: TouchPropagationMode.None
                         }
                     }
-                    Separator {}
-
-                    ImageButton {
+                    Separator {
                         visible: !address.focused
+                    }
+
+                    // Back; while the address is being edited, it leaves editing.
+                    ImageButton {
                         verticalAlignment: VerticalAlignment.Center
-                        leftMargin: ui.du(1.5)
-                        rightMargin: ui.du(1.5)
+                        leftMargin: ui.du(1.2)
+                        rightMargin: ui.du(0.5)
                         defaultImageSource: "asset:///images/back.png"
                         pressedImageSource: "asset:///images/back.png"
                         disabledImageSource: "asset:///images/back.png"
-                        enabled: browser.canGoBack
+                        enabled: address.focused || browser.canGoBack
                         opacity: enabled ? 1.0 : 0.35
-                        preferredWidth: ui.du(6.5)
-                        preferredHeight: ui.du(6.5)
-                        onClicked: browser.back()
+                        preferredWidth: ui.du(5.5)
+                        preferredHeight: ui.du(5.5)
+                        onTouch: {
+                            if (event.isDown())
+                                page.backCancels = address.focused
+                        }
+                        onClicked: {
+                            if (page.backCancels || address.focused)
+                                address.loseFocus()
+                            else
+                                browser.back()
+                            page.backCancels = false
+                        }
                     }
 
                     // The address, in a darker pill: a padlock on https, the
@@ -238,8 +251,8 @@ Page {
                         ImageView {
                             visible: !address.focused && browser.url.indexOf("https://") == 0
                             imageSource: "asset:///images/lock.png"
-                            preferredWidth: ui.du(4.5)
-                            preferredHeight: ui.du(4.5)
+                            preferredWidth: ui.du(3.8)
+                            preferredHeight: ui.du(3.8)
                             verticalAlignment: VerticalAlignment.Center
                         }
                         TextField {
@@ -282,8 +295,8 @@ Page {
                             verticalAlignment: VerticalAlignment.Center
                             defaultImageSource: browser.loading ? "asset:///images/stop.png" : "asset:///images/reload.png"
                             pressedImageSource: defaultImageSource
-                            preferredWidth: ui.du(5.5)
-                            preferredHeight: ui.du(5.5)
+                            preferredWidth: ui.du(4.5)
+                            preferredHeight: ui.du(4.5)
                             onClicked: browser.loading ? browser.stop() : browser.reload()
                         }
                     }
@@ -294,8 +307,8 @@ Page {
                         rightMargin: ui.du(1)
                         defaultImageSource: "asset:///images/paste.png"
                         pressedImageSource: "asset:///images/paste.png"
-                        preferredWidth: ui.du(6)
-                        preferredHeight: ui.du(6)
+                        preferredWidth: ui.du(5)
+                        preferredHeight: ui.du(5)
                         onClicked: browser.paste()
                     }
 
@@ -305,12 +318,12 @@ Page {
                     ImageButton {
                         visible: !address.focused
                         verticalAlignment: VerticalAlignment.Center
-                        leftMargin: ui.du(1.5)
-                        rightMargin: ui.du(1.5)
+                        leftMargin: ui.du(1.2)
+                        rightMargin: ui.du(1.2)
                         defaultImageSource: "asset:///images/overflow.png"
                         pressedImageSource: "asset:///images/overflow.png"
-                        preferredWidth: ui.du(6.5)
-                        preferredHeight: ui.du(6.5)
+                        preferredWidth: ui.du(5.5)
+                        preferredHeight: ui.du(5.5)
                         onClicked: page.openMenu()
                     }
                 }
