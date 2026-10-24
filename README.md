@@ -3,7 +3,7 @@
 A web browser for BlackBerry 10 with a native Cascades interface in the style
 of the stock browser, on top of the Chromium engine that
 [chromium-for-bb10](https://github.com/zsavajji/chromium-for-bb10) ports to
-QNX (Berry Browser's `content_shell`, build 84).
+QNX (Berry Browser's `content_shell`, build 106: Chromium 120).
 
 Berry Browser draws its own toolbar with Skia inside the engine. Berry
 Cascades runs the same engine with that toolbar off and puts Cascades around
@@ -126,8 +126,8 @@ tools/build.sh
 ```
 
 `tools/build.sh` first runs `tools/fetch-engine.sh`, which downloads Berry
-Browser build 84 from chromium-for-bb10, checks its sha256, and unpacks the
-engine into `engine/`. To use a `.bar` you already have:
+Browser build 106 from [sw7ft/berry-browser](https://github.com/sw7ft/berry-browser)'s
+releases, checks its sha256, and unpacks the engine into `engine/`. To use a `.bar` you already have:
 
 ```sh
 tools/fetch-engine.sh path/to/BerryBrowserV3-3.0.2-build84.bar

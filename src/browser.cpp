@@ -270,6 +270,10 @@ void Browser::launch()
         fps = cores >= 4 ? 45 : 30;
     env.insert("QNX_MAX_FPS", QString::number(fps));
     env.insert("QNX_GPU_PROBE", "0");
+    // Berry's engine starts its DevTools server only when asked by this, not
+    // by --remote-debugging-port alone (shell_browser_main_parts.cc on
+    // berry-v3), and DevTools is how this app drives it.
+    env.insert("QNX_DEVTOOLS", "1");
     env.insert("BERRY_APP_MODE", "1");
     env.insert("BERRY_EMBED_GROUP", bb::cascades::Application::instance()->mainWindow()->groupId());
     env.insert("BERRY_EMBED_ID", kWindowId);

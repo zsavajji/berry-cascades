@@ -1,21 +1,22 @@
 #!/bin/sh
 # Unpacks the Chromium engine from a Berry Browser package into engine/:
 # content_shell.exe, its data files and the runtime libraries it ships with.
-# The package is releases/BerryBrowserV3-*.bar in
-# https://github.com/zsavajji/chromium-for-bb10 (or upstream sw7ft's).
+# Berry Browser's packages are the releases of
+# https://github.com/sw7ft/berry-browser (build 84 is also in
+# releases/ of https://github.com/zsavajji/chromium-for-bb10).
 #
 #   tools/fetch-engine.sh path/to/BerryBrowserV3-3.0.2-build84.bar
 #
-# Without an argument it downloads build 84 and checks its sha256.
+# Without an argument it downloads build 106 and checks its sha256.
 set -eu
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
-url=https://github.com/zsavajji/chromium-for-bb10/raw/main/releases/BerryBrowserV3-3.0.2-build84.bar
-sum=c71d1a72593d4a6b7efb9b6a80e9396dd2acf2e0167d2e4186859fa45207ea6c
+url=https://github.com/sw7ft/berry-browser/releases/download/v3.0.2-build106/BerryBrowserV3-3.0.2-build106.bar
+sum=87c2757c48725f105a35a634a9da69645481c4b75a3866d24d4182a4d98c53dc
 
 bar=${1:-}
 if [ -z "$bar" ]; then
-    bar=$repo/build/BerryBrowserV3-3.0.2-build84.bar
+    bar=$repo/build/BerryBrowserV3-3.0.2-build106.bar
     mkdir -p "$repo/build"
     [ -f "$bar" ] || curl -fL -o "$bar" "$url"
     [ "$(sha256sum "$bar" | cut -d' ' -f1)" = "$sum" ] || {

@@ -41,9 +41,9 @@ DuckDuckGo Lite search works without JavaScript.
 
 ## What needs an engine build (your toolchain)
 
-The bundled engine is Berry Browser **build 84**, the newest one published.
-Upstream's `berry-v3` branch has reached build 109, which is faster, but no
-binary has been released:
+The bundled engine is Berry Browser **build 106**, the newest one published
+(sw7ft/berry-browser releases), so it has the first two below. Upstream's
+`berry-v3` branch has reached build 109, but no binary has been released:
 
 1. **ThinLTO (builds 95+).** 96 → 86 MB, fewer worst-case load stalls.
    Needs only GN args (`use_lld = true`, `use_thin_lto = true` on top of
@@ -54,13 +54,19 @@ binary has been released:
    repository**, so you would build the instrumented engine
    (`chrome_pgo_phase = 1`), browse with it on a phone to collect profiles,
    merge them, and build phase 2. Runbook: `deploy/PGO.md`.
-3. Engine fixes after build 84 that the launcher cannot reach: the hang
-   detector (b7bf89c), the telemetry-blocklist stall fix (8fd8aa0; this app
-   does not pass that blocklist, so it is not affected).
+3. Engine fixes after build 106 that the launcher cannot reach: the hang
+   detector (b7bf89c, two days after the release). The telemetry-blocklist
+   stall fix (8fd8aa0) landed the same day as the release, so it may not be
+   in it; this app does not pass that blocklist, so it is not affected.
 
 To use a newer engine here, package it as Berry Browser does and point
 `tools/fetch-engine.sh` at that `.bar`. The app only depends on command-line
-flags that build 84 already accepts.
+flags that build 84 already accepts, and on the engine's DevTools port.
+
+Berry's engine starts its DevTools server, which this app drives it
+through, only when `QNX_DEVTOOLS` is set (`shell_browser_main_parts.cc` on
+`berry-v3`; `--remote-debugging-port` alone is not enough). Builds 84 and
+106 both read it, and the app sets it.
 
 Tried upstream and ruled out: multi-process (unstable), always-Sparkplug,
 fewer raster threads plus lower resolution against the JS stall (within
