@@ -47,8 +47,14 @@ above it while a page loads.
   page's root, which Chromium honours; Browser re-applies it after every
   load so it holds with JavaScript off too.
 - **Settings**: search engine, home page, suggestions, swipe navigation, desktop sites,
-  JavaScript, images, rendering resolution, HTTPS certificate checks,
-  clear history/cache/cookies, and two engine-window corrections (below).
+  JavaScript, images, the engine's ad and tracker blocker (its switch file,
+  `misc/berry-adblock.disable`, is shared with Berry Browser), dark pages,
+  rendering resolution (sharpness only: pages keep their size), frame rate,
+  JavaScript memory (256/384/512 MB),
+  HTTPS certificate checks, clear history/cache/cookies, two engine-window
+  corrections (below), and Performance: Berry Browser's engine defaults,
+  each one a choice (GPU drawing, painting threads, low-end mode, the 256 MB
+  cache, service workers, privacy-sandbox cuts, HTTP/3, HTTP/1.1 only).
 - Other apps can open `http`/`https` links in it.
 
 The features beyond navigation follow

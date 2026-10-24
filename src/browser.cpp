@@ -39,6 +39,18 @@ const qint64 kMaxLogBytes = 2 * 1024 * 1024;
 // "quality" setting.
 const double kRenderScales[] = {0.375, 0.5, 0.75, 1.0};
 
+// The rendering resolution a phone starts at: 3/8 from 1080 pixels up (the
+// Passport's 1440), else 1/2. It also sets how big pages look: the other
+// resolutions change the device scale factor, not the page's CSS size.
+int defaultQuality(int width, int height)
+{
+    return qMin(width, height) >= 1080 ? 0 : 1;
+}
+
+// The engine's ad and tracker blocker is on unless this file exists. The
+// engine reads it itself, so the switch is shared with Berry Browser.
+const char kAdblockOff[] = "/accounts/1000/shared/misc/berry-adblock.disable";
+
 // The "search" setting: key, name, address the encoded terms are appended to.
 // DuckDuckGo Lite is the html/ endpoint, which works without JavaScript.
 struct SearchEngine { const char *key; const char *name; const char *url; };
@@ -65,7 +77,10 @@ bool isEngineSetting(const QString &key)
     return key == "quality" || key == "desktop" || key == "verifyCerts"
         || key == "rotation" || key == "touchMode" || key == "javascript"
         || key == "images" || key == "fps" || key == "wasmLite"
-        || key == "scrollbars" || key == "detailedLog";
+        || key == "scrollbars" || key == "detailedLog" || key == "adblock"
+        || key == "darkPages" || key == "heap" || key == "gpu" || key == "lowEnd"
+        || key == "diskCache" || key == "serviceWorkers" || key == "privacyCuts"
+        || key == "quic" || key == "http1" || key == "rasterThreads";
 }
 
 QString jsString(const QString &s)
@@ -375,27 +390,46 @@ QStringList Browser::engineArguments(const QString &startUrl) const
         args << "--ignore-certificate-errors";
     args << "--use-fake-ui-for-media-stream"
          << "--use-fake-device-for-media-stream"
-         << "--disable-quic"
          << "--disable-renderer-accessibility"
          << "--ozone-platform=qnx_screen"
-         << "--use-gl=egl"
-         << "--ignore-gpu-blocklist"
-         << "--enable-gpu-rasterization"
-         << QString("--num-raster-threads=%1").arg(qBound(1, QThread::idealThreadCount(), 4))
-         << "--force-device-scale-factor=1"
-         << "--disable-features=NetworkServiceDedicatedThread,MojoIpcz,Translate,"
-            "OptimizationHints,MediaRouter,PreconnectToSearch,BackForwardCache,"
-            "AutofillServerCommunication,HeavyAdPrivacyMitigations,"
-            "InterestFeedContentSuggestions,FedCm,PrivacySandboxAdsAPIs,"
-            "SharedStorageAPI,PrivateAggregationApi"
-         << "--enable-low-end-device-mode"
-         // ...but keep the 128MB decoded-image budget, which low-end mode cuts
-         // to 32MB, so images are not re-decoded on every scroll (Berry
-         // Browser build 107; a field-trial parameter, no engine change).
-         << "--enable-features=ImageDecodeConfigurableFeature:"
-            "DecodedImageWorkingSetBudgetBytesForLowEndDevice/134217728"
-         << "--disk-cache-size=268435456"
-         << "--media-cache-size=268435456";
+         << QString("--force-device-scale-factor=%1").arg(
+                kRenderScales[setting("quality").toInt()] / kRenderScales[defaultQuality(m_width, m_height)],
+                0, 'g', 4);
+    // Settings > Performance: Berry Browser's defaults, each one a choice.
+    if (!setting("quic").toBool())
+        args << "--disable-quic";  // breaks video CDNs on QNX (Berry)
+    if (setting("http1").toBool())
+        args << "--disable-http2";
+    if (setting("gpu").toBool())
+        args << "--use-gl=egl" << "--ignore-gpu-blocklist" << "--enable-gpu-rasterization";
+    else
+        // --disable-gpu alone still makes the renderer wait ~14 s for a GPU
+        // channel that never comes (Berry, build 3786306).
+        args << "--disable-gpu" << "--disable-gpu-compositing";
+    int rasterThreads = setting("rasterThreads").toInt();
+    if (rasterThreads <= 0)
+        rasterThreads = qBound(1, QThread::idealThreadCount(), 4);
+    args << QString("--num-raster-threads=%1").arg(rasterThreads);
+    // The first two keep the engine working on QNX; the rest are services
+    // a phone does not need.
+    QStringList off = QStringList() << "NetworkServiceDedicatedThread" << "MojoIpcz"
+        << "Translate" << "OptimizationHints" << "MediaRouter" << "PreconnectToSearch"
+        << "BackForwardCache" << "AutofillServerCommunication" << "HeavyAdPrivacyMitigations"
+        << "InterestFeedContentSuggestions";
+    if (setting("privacyCuts").toBool())
+        off << "FedCm" << "PrivacySandboxAdsAPIs" << "SharedStorageAPI" << "PrivateAggregationApi";
+    if (!setting("serviceWorkers").toBool())
+        off << "ServiceWorker";
+    args << "--disable-features=" + off.join(",");
+    if (setting("lowEnd").toBool())
+        args << "--enable-low-end-device-mode"
+             // ...but keep the 128MB decoded-image budget, which low-end mode
+             // cuts to 32MB, so images are not re-decoded on every scroll
+             // (Berry Browser build 107; a field-trial parameter).
+             << "--enable-features=ImageDecodeConfigurableFeature:"
+                "DecodedImageWorkingSetBudgetBytesForLowEndDevice/134217728";
+    if (setting("diskCache").toBool())
+        args << "--disk-cache-size=268435456" << "--media-cache-size=268435456";
     if (!setting("desktop").toBool())
         args << "--use-mobile-user-agent";
     QString blink = "hyperlinkAuditingEnabled=false,spellcheckEnabledByDefault=false";
@@ -403,10 +437,13 @@ QStringList Browser::engineArguments(const QString &startUrl) const
         blink += ",scriptEnabled=false";
     if (!setting("images").toBool())
         blink += ",imagesEnabled=false";
+    if (setting("darkPages").toBool())
+        blink += ",forceDarkModeEnabled=true";
     // WebAssembly stays on its baseline compiler: tier-up recompiles hot
     // code on every core right when the page needs them (Berry's WhatsApp
     // app ships this way).
-    args << QString("--js-flags=--max-old-space-size=256%1")
+    args << QString("--js-flags=--max-old-space-size=%1%2")
+                .arg(setting("heap").toInt())
                 .arg(setting("wasmLite").toBool() ? " --no-wasm-tier-up --wasm-lazy-validation" : "")
          << "--blink-settings=" + blink
          << "--remote-debugging-address=127.0.0.1"
@@ -1221,16 +1258,26 @@ QVariant Browser::setting(const QString &key) const
     if (key == "quality") {
         int quality = m_settings.value("quality", -1).toInt();
         if (quality < 0 || quality > 3)
-            quality = qMin(m_width, m_height) >= 1080 ? 0 : 1;
+            quality = defaultQuality(m_width, m_height);
         return quality;
     }
-    if (key == "rotation" || key == "touchMode" || key == "fps")
+    if (key == "rotation" || key == "touchMode" || key == "fps" || key == "rasterThreads")
         return m_settings.value(key, 0).toInt();
+    if (key == "heap") {
+        // V8's old-space cap in MB. Above 512 the 32-bit address space,
+        // shared with graphics and network, runs out (Berry's "risky").
+        const int heap = m_settings.value(key, 256).toInt();
+        return heap == 384 || heap == 512 ? heap : 256;
+    }
+    if (key == "adblock")
+        return !QFile::exists(kAdblockOff);
     if (key == "desktop" || key == "verifyCerts" || key == "swipeNavigation" || key == "wasmLite"
-        || key == "scrollbars" || key == "detailedLog")
+        || key == "scrollbars" || key == "detailedLog" || key == "darkPages" || key == "quic"
+        || key == "http1")
         return m_settings.value(key, false).toBool();
     if (key == "javascript" || key == "images" || key == "suggestions" || key == "pauseInBackground"
-        || key == "mobileView")
+        || key == "mobileView" || key == "gpu" || key == "lowEnd" || key == "diskCache"
+        || key == "serviceWorkers" || key == "privacyCuts")
         return m_settings.value(key, true).toBool();
     if (key == "search")
         return QString(searchEngine(m_settings.value(key, "duckduckgo").toString()).key);
@@ -1241,7 +1288,15 @@ void Browser::setSetting(const QString &key, const QVariant &value)
 {
     if (setting(key) == value)
         return;
-    m_settings.setValue(key, value);
+    if (key == "adblock") {
+        QFile off(kAdblockOff);
+        if (value.toBool())
+            off.remove();
+        else
+            off.open(QIODevice::WriteOnly);
+    } else {
+        m_settings.setValue(key, value);
+    }
     if (key == "search")
         emit searchChanged();
     if (key == "swipeNavigation")
