@@ -75,6 +75,7 @@ Page {
 
                 // Seen while the engine starts or after it stops.
                 Container {
+                    visible: browser.engineState != "running"
                     horizontalAlignment: HorizontalAlignment.Center
                     verticalAlignment: VerticalAlignment.Center
                     Label {
@@ -96,7 +97,7 @@ Page {
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
                     scalingMethod: ScalingMethod.Fill
-                    visible: (page.menuOpen || page.dialogOpen) && page.snapshotUrl != ""
+                    visible: (page.menuOpen || page.dialogOpen || page.sheetOpen) && page.snapshotUrl != ""
                     imageSource: page.snapshotUrl
                 }
 

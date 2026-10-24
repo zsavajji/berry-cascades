@@ -682,8 +682,12 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
             }
         }
     } else if (method == "Page.domContentEventFired" || method == "Page.loadEventFired") {
-        if (m_loading)
-            setProgress(qMax(m_progress, method == "Page.loadEventFired" ? 0.9 : 0.7));
+        // The page's load event ends the bar: frameStoppedLoading waits for
+        // every frame, and an ad frame that never finishes would hold it.
+        if (method == "Page.loadEventFired")
+            setLoading(false);
+        else if (m_loading)
+            setProgress(qMax(m_progress, 0.7));
         m_historyTimer.start();
         applySwipe();
     } else if (method == "Page.navigatedWithinDocument") {
