@@ -123,6 +123,23 @@ toolchain gap, and a milestone plan.
   the menu and dialogs, a snapshot of the page (`Page.captureScreenshot`)
   stands in for it.
 
+## The engine
+
+This repository is the app; the engine comes from elsewhere:
+
+- **The binary**: Berry Browser's `content_shell`, from the releases of
+  [sw7ft/berry-browser](https://github.com/sw7ft/berry-browser) (build 106),
+  fetched and checked by `tools/fetch-engine.sh`.
+- **The port**: Chromium for QNX/BB10, sw7ft's
+  [chromium-for-bb10](https://github.com/sw7ft/chromium-for-bb10) and its fork
+  [zsavajji/chromium-for-bb10](https://github.com/zsavajji/chromium-for-bb10),
+  whose `berry-cascades` branch this repository's history comes from.
+
+The app talks to the engine only through command-line flags, environment
+variables (`QNX_DEVTOOLS`, `QNX_SCREEN_*`, `BERRY_*`), the DevTools protocol
+and the window shim in `shim/`, so any Berry Browser build that keeps those
+should work here.
+
 ## Building
 
 The build runs in a Docker image with the BlackBerry 10 Native SDK 10.3.1
