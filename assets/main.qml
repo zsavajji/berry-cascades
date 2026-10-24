@@ -25,8 +25,18 @@ Page {
     property string snapshotUrl
     property bool finding: false
     property bool typing: false
-    property bool showSuggestions: address.focused && typing && address.text.length > 0
-    property bool sheetOpen: bookmarksSheet.opened || historySheet.opened || tabsSheet.opened
+    property string focusText   // the address as it was selected on focus
+    // The tap that focuses the address then puts the cursor where it landed,
+    // undoing the selection: the first cursor move after focus selects all again.
+    property bool selectOnTap: false
+    // Not tied to the address having focus: a tap on a suggestion takes the
+    // focus away first. Picking one, Go or Back ends the typing.
+    property bool showSuggestions: typing && address.text.length > 0
+    onTypingChanged: {
+        if (!typing && !address.focused)
+            address.text = page.displayUrl(browser.url)
+    }
+    property bool sheetOpen: bookmarksSheet.opened || historySheet.opened
                              || downloadsSheet.opened || settingsSheet.opened
     property bool covered: menuOpen || dialogOpen || sheetOpen || showSuggestions
     property bool startPage: browser.url.indexOf("file://") == 0
@@ -144,6 +154,7 @@ Page {
                         ]
                         onTriggered: {
                             browser.open(dataModel.data(indexPath).url)
+                            page.typing = false
                             address.loseFocus()
                         }
                     }
@@ -217,18 +228,19 @@ Page {
                         defaultImageSource: "asset:///images/back.png"
                         pressedImageSource: "asset:///images/back.png"
                         disabledImageSource: "asset:///images/back.png"
-                        enabled: address.focused || browser.canGoBack
+                        enabled: address.focused || page.typing || browser.canGoBack
                         opacity: enabled ? 1.0 : 0.35
                         preferredWidth: ui.du(5.5)
                         preferredHeight: ui.du(5.5)
                         onTouch: {
                             if (event.isDown())
-                                page.backCancels = address.focused
+                                page.backCancels = address.focused || page.typing
                         }
                         onClicked: {
-                            if (page.backCancels || address.focused)
+                            if (page.backCancels || address.focused || page.typing) {
+                                page.typing = false
                                 address.loseFocus()
-                            else
+                            } else
                                 browser.back()
                             page.backCancels = false
                         }
@@ -272,21 +284,44 @@ Page {
                                 submitKey: SubmitKey.Go
                                 onSubmitted: {
                                     browser.open(address.text)
+                                    page.typing = false
                                     address.loseFocus()
                                 }
                             }
                             onFocusedChanged: {
-                                page.typing = false
                                 if (focused) {
+                                    page.typing = false
                                     address.text = page.startPage ? "" : browser.url
+                                    page.focusText = address.text
                                     address.editor.setSelection(0, address.text.length)
+                                    page.selectOnTap = true
                                 } else {
-                                    address.text = page.displayUrl(browser.url)
+                                    page.selectOnTap = false
+                                    if (!page.typing)
+                                        address.text = page.displayUrl(browser.url)
                                 }
                             }
                             onTextChanging: {
+                                page.selectOnTap = false
                                 if (!focused)
                                     return
+                                // The first key should replace the address selected on
+                                // focus, but the phone's keyboard moves the cursor to the
+                                // end and appends: replace here. Only a real change counts
+                                // (the cursor moving reports the same text). Setting the
+                                // text comes back through this handler.
+                                var old = page.focusText
+                                if (old != "" && text != old) {
+                                    page.focusText = ""
+                                    if (text.length > old.length && text.indexOf(old) == 0) {
+                                        address.text = text.substring(old.length)
+                                        return
+                                    }
+                                    if (text.length < old.length && old.indexOf(text) == 0) {
+                                        address.text = ""
+                                        return
+                                    }
+                                }
                                 page.typing = true
                                 page.fillSuggestions(text)
                             }
@@ -720,6 +755,7 @@ Page {
         browser.message.connect(notify)
         downloads.message.connect(notify)
         browser.pageTouched.connect(function () {
+            page.typing = false
             address.loseFocus()
             findField.loseFocus()
         })
@@ -728,6 +764,12 @@ Page {
                 address.text = page.displayUrl(browser.url)
         })
         browser.contextMenu.connect(page.showMenu)
+        address.editor.cursorPositionChanged.connect(function () {
+            if (page.selectOnTap) {
+                page.selectOnTap = false
+                address.editor.setSelection(0, address.text.length)
+            }
+        })
         browser.findResult.connect(function (found, count) {
             findCount.text = found || count > 0 ? qsTr("%1 found").arg(count) : qsTr("Not found")
         })
