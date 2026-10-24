@@ -2,7 +2,7 @@ import bb.cascades 1.3
 import bb.system 1.2
 
 // Laid out like the stock BlackBerry 10 browser: the page fills the screen
-// and one dark bar along the bottom carries Tabs, Back, the address and the
+// and one dark bar along the bottom carries Back, the address and the
 // ⋮ menu, with a thin blue line above it while a page loads. Selecting text
 // or finding in the page swaps the bar for its own.
 //
@@ -47,6 +47,23 @@ Page {
     property string menuImage
     property bool sharePending: false
     property bool backCancels: false   // the address was being edited when Back went down
+
+    // Stock bars: scrolling down leaves only the slim address bar; scrolling
+    // up, a tap on it, or a swipe down from the top edge (which also shows
+    // the title strip) brings the full bar back. The page's window reaches
+    // from the top to the slim bar; the strips over it are clipped out of it.
+    property int titleHeight: ui.du(5)
+    property int slimHeight: ui.du(3.3)
+    property int fullHeight: ui.du(10.5)  // the bar and the progress line above it (as stock)
+    property bool barsHidden: false
+    // Editing, finding, selecting and the menus need the full bar.
+    property bool barsShown: !barsHidden || address.focused || finding || browser.selecting || covered
+    property bool titleShown: false
+    property bool titleIn: titleShown && barsShown
+    // Browser slides them (browser.barsIn, browser.titleIn) and clips the
+    // page's window in step.
+    onBarsShownChanged: browser.showBars(webView, barsShown, titleIn, true)
+    onTitleInChanged: browser.showBars(webView, barsShown, titleIn, true)
 
     keyListeners: [
         // Keys typed while no Cascades field is focused go to the page.
@@ -120,7 +137,14 @@ Page {
                     // on it); Cascades only places and shows it.
                     updatedProperties: WindowProperty.Position | WindowProperty.Visible
                     keyInputForwardingEnabled: false
-                    visible: !page.covered
+                    // Not once the engine has stopped: its last frame would
+                    // cover the Restart button.
+                    visible: !page.covered && browser.engineState != "stopped"
+                             && browser.engineState != "failed"
+                    onBoundToWindowChanged: {
+                        if (boundToWindow)
+                            browser.showBars(webView, page.barsShown, page.titleIn, false)
+                    }
 
                     attachedObjects: [
                         LayoutUpdateHandler {
@@ -131,11 +155,13 @@ Page {
                     ]
                 }
 
-                // Address suggestions: a search, then bookmarks and history.
+                // Address suggestions: a search, then bookmarks and history,
+                // above the bars, which lie over the bottom of the page area.
                 Container {
                     visible: page.showSuggestions
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
+                    bottomPadding: page.fullHeight - page.slimHeight
                     background: Color.create("#121212")
                     ListView {
                         dataModel: ArrayDataModel {
@@ -161,6 +187,105 @@ Page {
                 }
             }
 
+            // ---- the slim bar: the address, while the page is scrolled -----
+            Container {
+                horizontalAlignment: HorizontalAlignment.Fill
+                preferredHeight: page.slimHeight
+                background: Color.create("#282828")
+                layout: DockLayout {}
+                gestureHandlers: [
+                    TapHandler {
+                        onTapped: page.barsHidden = false
+                    }
+                ]
+                Container {
+                    visible: browser.loading
+                    preferredWidth: page.rootWidth * browser.progress
+                    preferredHeight: ui.du(0.3)
+                    background: Color.create("#00a8df")
+                }
+                Container {
+                    verticalAlignment: VerticalAlignment.Center
+                    leftPadding: ui.du(1.5)
+                    rightPadding: ui.du(1)
+                    layout: StackLayout {
+                        orientation: LayoutOrientation.LeftToRight
+                    }
+                    ImageView {
+                        visible: browser.url.indexOf("https://") == 0
+                        verticalAlignment: VerticalAlignment.Center
+                        imageSource: "asset:///images/lock.png"
+                        // Fixed: the address would squeeze it to nothing.
+                        minWidth: ui.du(3)
+                        maxWidth: ui.du(3)
+                        preferredHeight: ui.du(3)
+                        rightMargin: ui.du(1.5)
+                    }
+                    Label {
+                        verticalAlignment: VerticalAlignment.Center
+                        layoutProperties: StackLayoutProperties {
+                            spaceQuota: 1
+                        }
+                        text: page.displayUrl(browser.url)
+                        textStyle.fontSize: FontSize.XSmall
+                        textStyle.color: Color.White
+                    }
+                }
+            }
+        }
+
+        // ---- the title strip: swipe down from the top edge -----------------
+        // Over the top of the page, whose window is clipped there (as under
+        // the bars below), with the site's icon and title.
+        Container {
+            translationY: -(1 - browser.titleIn) * page.titleHeight
+            attachedObjects: [
+                // browser.titleIn already moves in steps.
+                ImplicitAnimationController {
+                    propertyName: "translationY"
+                    enabled: false
+                }
+            ]
+            horizontalAlignment: HorizontalAlignment.Fill
+            verticalAlignment: VerticalAlignment.Top
+            preferredHeight: page.titleHeight
+            leftPadding: ui.du(1)
+            rightPadding: ui.du(1)
+            background: Color.create("#262626")
+            layout: StackLayout {
+                orientation: LayoutOrientation.LeftToRight
+            }
+            ImageView {
+                visible: browser.icon != ""
+                verticalAlignment: VerticalAlignment.Center
+                imageSource: browser.icon
+                preferredWidth: ui.du(3.5)
+                preferredHeight: ui.du(3.5)
+                rightMargin: ui.du(1)
+            }
+            Label {
+                verticalAlignment: VerticalAlignment.Center
+                text: browser.title != "" ? browser.title : page.displayUrl(browser.url)
+                textStyle.fontSize: FontSize.XSmall
+                textStyle.color: Color.White
+            }
+        }
+
+        // ---- the bars, over the bottom of the page -------------------------
+        // The page's window reaches down to the slim bar; while these show,
+        // its bottom is clipped (Browser::showBars) so they show through.
+        Container {
+            translationY: (1 - browser.barsIn) * page.fullHeight
+            attachedObjects: [
+                ImplicitAnimationController {
+                    propertyName: "translationY"
+                    enabled: false
+                }
+            ]
+            horizontalAlignment: HorizontalAlignment.Fill
+            verticalAlignment: VerticalAlignment.Bottom
+            layout: StackLayout {}
+
             // ---- load progress: the thin blue line -------------------------
             Container {
                 horizontalAlignment: HorizontalAlignment.Fill
@@ -178,46 +303,21 @@ Page {
             // ---- the bar ---------------------------------------------------
             Container {
                 horizontalAlignment: HorizontalAlignment.Fill
-                preferredHeight: ui.du(8.5)
-                background: Color.create("#262626")
+                preferredHeight: page.fullHeight - ui.du(0.5)
+                background: Color.create("#282828")
                 layout: DockLayout {}
 
-                // Browsing: Tabs | Back [address] | ⋮
+                // Browsing: Back [address] | ⋮
                 Container {
                     visible: !browser.selecting && !page.finding
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Center
+                    // Margins only space siblings, never the bar's edges: Back
+                    // is always first, and while editing the address is last.
+                    leftPadding: ui.du(1.2)
+                    rightPadding: address.focused ? ui.du(1) : 0
                     layout: StackLayout {
                         orientation: LayoutOrientation.LeftToRight
-                    }
-
-                    Container {
-                        verticalAlignment: VerticalAlignment.Center
-                        layout: DockLayout {}
-                        leftPadding: ui.du(1.2)
-                        rightPadding: ui.du(1.2)
-                        visible: !address.focused
-                        ImageButton {
-                            defaultImageSource: "asset:///images/tabs.png"
-                            pressedImageSource: "asset:///images/tabs.png"
-                            preferredWidth: ui.du(5.5)
-                            preferredHeight: ui.du(5.5)
-                            onClicked: tabsSheet.open()
-                        }
-                        Label {
-                            visible: browser.tabs.length > 1
-                            horizontalAlignment: HorizontalAlignment.Center
-                            verticalAlignment: VerticalAlignment.Center
-                            translationX: -ui.du(0.4)
-                            translationY: ui.du(0.4)
-                            text: browser.tabs.length
-                            textStyle.fontSize: FontSize.XXSmall
-                            textStyle.color: Color.White
-                            touchPropagationMode: TouchPropagationMode.None
-                        }
-                    }
-                    Separator {
-                        visible: !address.focused
                     }
 
                     // Back; while the address is being edited, it leaves editing.
@@ -501,14 +601,6 @@ Page {
                         onTriggered: page.menuDo(function () { browser.forward() })
                     }
                     MenuRow {
-                        title: qsTr("New tab")
-                        imageSource: "asset:///images/newtab.png"
-                        onTriggered: page.menuDo(function () {
-                            browser.newTab("")
-                            address.requestFocus()
-                        })
-                    }
-                    MenuRow {
                         title: qsTr("Home")
                         imageSource: "asset:///images/home.png"
                         onTriggered: page.menuDo(function () { browser.home() })
@@ -595,15 +687,6 @@ Page {
             content: HistoryPage {
                 id: historyPage
                 onDone: historySheet.close()
-            }
-        },
-        Sheet {
-            id: tabsSheet
-            onOpened: tabsPage.show()
-            onClosed: tabsPage.active = false
-            content: TabsPage {
-                id: tabsPage
-                onDone: tabsSheet.close()
             }
         },
         Sheet {
@@ -712,8 +795,8 @@ Page {
         var titles = []
         var actions = []
         if (link) {
-            titles.push(qsTr("Open"), qsTr("Open in new tab"), qsTr("Copy link"), qsTr("Share link"))
-            actions.push("open", "newTab", "copyLink", "shareLink")
+            titles.push(qsTr("Open"), qsTr("Copy link"), qsTr("Share link"))
+            actions.push("open", "copyLink", "shareLink")
             if (linkText) {
                 titles.push(qsTr("Copy link text"))
                 actions.push("copyText")
@@ -741,7 +824,6 @@ Page {
 
     function runMenuAction(action) {
         if (action == "open") browser.open(page.menuLink)
-        else if (action == "newTab") browser.newTab(page.menuLink)
         else if (action == "copyLink") browser.copyText(page.menuLink)
         else if (action == "shareLink") page.share(page.menuLink)
         else if (action == "copyText") browser.copyText(page.menuText)
@@ -773,6 +855,23 @@ Page {
                 page.selectOnTap = false
                 address.editor.setSelection(0, address.text.length)
             }
+        })
+        browser.setBarHeights(page.titleHeight, page.slimHeight, page.fullHeight)
+        // The stock bars.
+        browser.pageScrolled.connect(function (down) {
+            page.barsHidden = down
+            if (down)
+                page.titleShown = false
+        })
+        browser.loadingChanged.connect(function () {
+            if (browser.loading) {
+                page.barsHidden = false
+                page.titleShown = false
+            }
+        })
+        browser.swipedDown.connect(function () {
+            page.titleShown = true
+            page.barsHidden = false
         })
         browser.findResult.connect(function (found, count) {
             findCount.text = found || count > 0 ? qsTr("%1 found").arg(count) : qsTr("Not found")

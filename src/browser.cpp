@@ -10,11 +10,15 @@
 #include <QUrl>
 
 #include <bb/cascades/Application>
+#include <bb/cascades/ForeignWindowControl>
 #include <bb/cascades/Window>
 #include <bb/data/JsonDataAccess>
 #include <bb/system/Clipboard>
 #include <bb/system/InvokeManager>
 #include <bb/system/InvokeRequest>
+
+#include <bb/UIToolkitSupport>
+#include <screen/screen.h>
 
 #include "downloads.h"
 #include "history.h"
@@ -31,7 +35,6 @@ const int kProbeMs = 500;
 const int kSlowStartProbes = 120;      // 60 s
 const int kVerySlowStartProbes = 360;  // 3 min
 const int kWatchMs = 3000;
-const int kMaxTabs = 20;
 const qint64 kMaxLogBytes = 2 * 1024 * 1024;
 
 // Fraction of the web view's pixels the engine renders, before the window
@@ -109,25 +112,38 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     , m_engineState("idle")
     , m_loading(false)
     , m_historyIndex(-1)
-    , m_currentTab(0)
-    , m_pendingScroll(0)
     , m_selecting(false)
     , m_editing(false)
     , m_progress(0)
     , m_snapshotId(-1)
     , m_snapshotCount(0)
     , m_pageActive(true)
+    , m_iconCount(0)
+    , m_titleHeight(0)
+    , m_slimHeight(0)
+    , m_fullHeight(0)
+    , m_barsIn(1)
+    , m_titleIn(0)
+    , m_barsFrom(1)
+    , m_titleFrom(0)
+    , m_barsTo(1)
+    , m_titleTo(0)
 {
     QFile script(QCoreApplication::applicationDirPath() + "/assets/page.js");
     if (script.open(QIODevice::ReadOnly))
         m_pageScript = QString::fromUtf8(script.readAll());
 
-    m_tabs = m_settings.value("tabs").toList();
-    m_currentTab = qBound(0, m_settings.value("currentTab", 0).toInt(), qMax(0, m_tabs.size() - 1));
-
     m_startTimer.setSingleShot(true);
     m_startTimer.setInterval(400);
     connect(&m_startTimer, SIGNAL(timeout()), this, SLOT(launchIfIdle()));
+
+    // A swipe down from the top edge shows the title strip (Cascades' own
+    // application menu is off, see main.cpp).
+    m_toolkit = new bb::UIToolkitSupport(this);
+    connect(m_toolkit, SIGNAL(swipedDown(bb::SwipeDownMode::Type)), this, SLOT(swipeFromTop()));
+
+    m_barsTimer.setInterval(16);
+    connect(&m_barsTimer, SIGNAL(timeout()), this, SLOT(stepBars()));
     connect(&m_probe, SIGNAL(timeout()), this, SLOT(probeEngine()));
     m_historyTimer.setSingleShot(true);
     m_historyTimer.setInterval(150);
@@ -304,8 +320,8 @@ void Browser::launch()
         QFile::remove(logFile);
 
     QString startUrl = m_pendingUrl;
-    if (startUrl.isEmpty() && m_currentTab < m_tabs.size())
-        startUrl = m_tabs.at(m_currentTab).toMap().value("url").toString();
+    if (startUrl.isEmpty())
+        startUrl = m_settings.value("lastUrl").toString();
     if (startUrl.isEmpty())
         startUrl = homeUrl();
     m_pendingUrl.clear();
@@ -345,7 +361,7 @@ void Browser::launch()
         emit selectionChanged();
         emit editingChanged();
     }
-    updateCurrentTab();
+    rememberPage();
     setLoading(true);
     setEngineState("starting");
     m_probeAttempts = 0;
@@ -588,18 +604,10 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
             const QString text = value.toString().simplified();
             clearSelection();
             if (!text.isEmpty())
-                newTab(searchUrl(text));
+                navigate(searchUrl(text));
         } else if (purpose == "find") {
             const QVariantMap found = value.toMap();
             emit findResult(found.value("found").toBool(), found.value("count").toInt());
-        } else if (purpose.startsWith("scroll:")) {
-            const int tab = purpose.mid(7).toInt();
-            if (tab >= 0 && tab < m_tabs.size()) {
-                QVariantMap row = m_tabs.at(tab).toMap();
-                row["scroll"] = value.toInt();
-                m_tabs[tab] = row;
-                saveTabs();
-            }
         }
     } else if (method == "Page.captureScreenshot") {
         if (id != m_snapshotId)
@@ -630,7 +638,7 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
             m_url = entry.value("url").toString();
             m_title = entry.value("title").toString();
             emit pageChanged();
-            updateCurrentTab();
+            rememberPage();
             if (!m_loading)
                 m_history->visit(m_url, m_title);
         }
@@ -656,10 +664,6 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
         if (mainFrame) {
             setLoading(false);
             m_historyTimer.start();
-            if (m_pendingScroll > 0) {
-                evaluate(QString("window.__berry&&__berry.scrollTo(%1)").arg(m_pendingScroll), QString());
-                m_pendingScroll = 0;
-            }
         }
     } else if (method == "Page.frameNavigated") {
         const QVariantMap frame = params.value("frame").toMap();
@@ -667,6 +671,7 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
             m_mainFrameId = frame.value("id").toString();
             m_url = frame.value("url").toString();
             emit pageChanged();
+            setIcon(QString());
             if (m_loading)
                 setProgress(qMax(m_progress, 0.3));
             m_historyTimer.start();
@@ -725,6 +730,10 @@ void Browser::pageEvent(const QVariantMap &event)
     } else if (type == "editing") {
         m_editing = event.value("on").toBool();
         emit editingChanged();
+    } else if (type == "scroll") {
+        emit pageScrolled(event.value("down").toBool());
+    } else if (type == "icon") {
+        saveIcon(event.value("data").toString());
     }
 }
 
@@ -827,7 +836,7 @@ void Browser::navigate(const QString &url)
 {
     m_url = url;
     emit pageChanged();
-    updateCurrentTab();
+    rememberPage();
     if (!m_devtools->isAttached()) {
         m_pendingUrl = url;
         if (m_engineState == "stopped" || m_engineState == "failed")
@@ -955,86 +964,100 @@ QVariantList Browser::suggest(const QString &text) const
     return out;
 }
 
-// ---- tabs ----------------------------------------------------------------
+// ---- the page's window and icon ------------------------------------------
 
-void Browser::updateCurrentTab()
+void Browser::setBarHeights(int title, int slim, int full)
 {
-    if (m_tabs.isEmpty()) {
-        m_tabs.append(QVariantMap());
-        m_currentTab = 0;
-    }
-    QVariantMap row = m_tabs.at(m_currentTab).toMap();
-    if (row.value("url").toString() == m_url && row.value("title").toString() == m_title)
-        return;
-    row["url"] = m_url;
-    row["title"] = m_title;
-    m_tabs[m_currentTab] = row;
-    saveTabs();
+    m_titleHeight = title;
+    m_slimHeight = slim;
+    m_fullHeight = full;
 }
 
-void Browser::saveTabs()
+void Browser::showBars(QObject *view, bool bars, bool title, bool animate)
 {
-    m_settings.setValue("tabs", m_tabs);
-    m_settings.setValue("currentTab", m_currentTab);
-    emit tabsChanged();
+    m_pageView = view;
+    m_barsFrom = m_barsIn;
+    m_titleFrom = m_titleIn;
+    m_barsTo = bars ? 1 : 0;
+    m_titleTo = title ? 1 : 0;
+    m_barsClock.start();
+    if (animate)
+        m_barsTimer.start();
+    else
+        m_barsClock.invalidate();
+    stepBars();
 }
 
-void Browser::newTab(const QString &input)
+void Browser::stepBars()
 {
-    if (m_tabs.size() >= kMaxTabs) {
-        emit message(tr("Close a tab first: %1 is the most").arg(kMaxTabs));
-        return;
-    }
-    evaluate("window.__berry?__berry.scrollY():0", QString("scroll:%1").arg(m_currentTab));
-    const QString url = input.isEmpty() ? homeUrl() : fixUp(input);
-    QVariantMap row;
-    row["url"] = url;
-    m_tabs.append(row);
-    m_currentTab = m_tabs.size() - 1;
-    m_title.clear();
-    saveTabs();
-    m_pendingScroll = 0;
-    navigate(url);
+    const int kSlideMs = 200;
+    const double t = m_barsClock.isValid() ? qMin(1.0, m_barsClock.elapsed() / double(kSlideMs)) : 1.0;
+    const double eased = 1 - (1 - t) * (1 - t);  // ease out
+    m_barsIn = m_barsFrom + (m_barsTo - m_barsFrom) * eased;
+    m_titleIn = m_titleFrom + (m_titleTo - m_titleFrom) * eased;
+    emit barsMoved();
+    if (t >= 1)
+        m_barsTimer.stop();
+    // The full bar slides by its own height and covers the slim bar first;
+    // the page is cut where it rises above the slim bar.
+    setPageClip(qRound(m_titleIn * m_titleHeight),
+                qMax(0, qRound(m_barsIn * m_fullHeight) - m_slimHeight));
 }
 
-void Browser::switchTab(int index)
+void Browser::setPageClip(int top, int bottom)
 {
-    if (index < 0 || index >= m_tabs.size() || index == m_currentTab)
+    bb::cascades::ForeignWindowControl *control = qobject_cast<bb::cascades::ForeignWindowControl *>(m_pageView);
+    screen_window_t window = control ? control->windowHandle() : 0;
+    if (!window)
         return;
-    evaluate("window.__berry?__berry.scrollY():0", QString("scroll:%1").arg(m_currentTab));
-    m_currentTab = index;
-    const QVariantMap row = m_tabs.at(index).toMap();
-    m_title = row.value("title").toString();
-    m_pendingScroll = row.value("scroll").toInt();
-    saveTabs();
-    navigate(row.value("url").toString().isEmpty() ? homeUrl() : row.value("url").toString());
+    // CLIP_* are the parent's to set on a child window. Window pixels are
+    // assumed here; if the engine's buffer pixels are meant instead, the cut
+    // comes out scaled by the rendering resolution (see the log line).
+    int size[2] = {0, 0};
+    screen_get_window_property_iv(window, SCREEN_PROPERTY_SIZE, size);
+    int position[2] = {0, top};
+    int clip[2] = {size[0], qMax(1, size[1] - top - bottom)};
+    screen_set_window_property_iv(window, SCREEN_PROPERTY_CLIP_POSITION, position);
+    screen_set_window_property_iv(window, SCREEN_PROPERTY_CLIP_SIZE, clip);
+    screen_context_t context = 0;
+    if (screen_get_window_property_pv(window, SCREEN_PROPERTY_CONTEXT, (void **)&context) == 0 && context)
+        screen_flush_context(context, 0);
+    if (!m_barsTimer.isActive())
+        log(QString("page clip: window %1x%2, showing y %3..%4").arg(size[0]).arg(size[1])
+                .arg(top).arg(top + clip[1]));
 }
 
-void Browser::closeTab(int index)
+void Browser::swipeFromTop()
 {
-    if (index < 0 || index >= m_tabs.size())
+    log("swipe down from the top edge");
+    emit swipedDown();
+}
+
+void Browser::saveIcon(const QString &dataUrl)
+{
+    const QByteArray png = QByteArray::fromBase64(dataUrl.mid(dataUrl.indexOf(',') + 1).toLatin1());
+    const QString old = QDir::homePath() + QString("/icon-%1.png").arg(m_iconCount);
+    const QString path = QDir::homePath() + QString("/icon-%1.png").arg(++m_iconCount);
+    QFile::remove(old);
+    QFile file(path);
+    if (!png.isEmpty() && file.open(QIODevice::WriteOnly) && file.write(png) == png.size())
+        setIcon(QUrl::fromLocalFile(path).toString());
+}
+
+void Browser::setIcon(const QString &icon)
+{
+    if (icon == m_icon)
         return;
-    if (m_tabs.size() == 1) {
-        m_tabs.clear();
-        m_currentTab = 0;
-        m_title.clear();
-        m_pendingScroll = 0;
-        navigate(homeUrl());
-        return;
-    }
-    m_tabs.removeAt(index);
-    if (index == m_currentTab) {
-        m_currentTab = qMin(index, m_tabs.size() - 1);
-        const QVariantMap row = m_tabs.at(m_currentTab).toMap();
-        m_title = row.value("title").toString();
-        m_pendingScroll = row.value("scroll").toInt();
-        saveTabs();
-        navigate(row.value("url").toString().isEmpty() ? homeUrl() : row.value("url").toString());
-    } else {
-        if (index < m_currentTab)
-            --m_currentTab;
-        saveTabs();
-    }
+    m_icon = icon;
+    emit iconChanged();
+}
+
+// ---- the last page, which the next start opens --------------------------
+
+void Browser::rememberPage()
+{
+    if (!m_url.isEmpty() && m_settings.value("lastUrl").toString() != m_url)
+        m_settings.setValue("lastUrl", m_url);
 }
 
 // ---- keys, editing, selection, find ----------------------------------------

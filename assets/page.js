@@ -6,6 +6,8 @@
 //   {t:"selection", text}             the selection changed
 //   {t:"selectionEnd"}                selection mode ended in the page
 //   {t:"editing", on}                 an editable field gained/lost focus
+//   {t:"scroll", down}                scrolled down (bars give way) or back up
+//   {t:"icon", data}                  the site's icon, a 64x64 PNG data: URL
 // Browser calls window.__berry.* through Runtime.evaluate.
 //
 // Page event listeners only run while the page's JavaScript is on, so with
@@ -336,6 +338,70 @@
 
   // ---- called by Browser -------------------------------------------------
 
+  // ---- the bars: scroll direction and the site's icon ---------------------
+  // Scrolling down past the top lets the bars give way to the slim one;
+  // scrolling up or reaching the top brings them back. Reported on change.
+
+  var lastY = window.scrollY, scrolledDown = false;
+  window.addEventListener("scroll", function () {
+    var y = window.scrollY, down = scrolledDown;
+    if (y <= 0) down = false;
+    else if (y > lastY + 8 && y > 48) down = true;
+    else if (y < lastY - 8) down = false;
+    if (y <= 0 || Math.abs(y - lastY) > 8) lastY = y;
+    if (down !== scrolledDown) {
+      scrolledDown = down;
+      report({t: "scroll", down: down});
+    }
+  }, {passive: true});
+
+  // The site's icon, sent to Browser as a 64x64 PNG data: URL. The page
+  // loads and decodes it (any format the engine reads, .ico and .svg too);
+  // Qt on BB10 cannot fetch it itself (TLS 1.0 only). Best first:
+  // apple-touch-icon (always a PNG), PNG icons (largest first), SVG, any
+  // other icon, and the site's /favicon.ico last. An icon from another site
+  // that does not allow it (CORS) cannot be read back: the next one is tried.
+  function iconRank(link) {
+    var type = (link.type || "").toLowerCase(), href = link.href.toLowerCase();
+    if (/apple-touch-icon/.test(link.rel.toLowerCase())) return 0;
+    if (type === "image/png" || /\.png(\?|#|$)/.test(href)) return 1;
+    if (type === "image/svg+xml" || /\.svg(\?|#|$)/.test(href)) return 2;
+    return 3;
+  }
+  function iconSize(link) {
+    var m = /(\d+)x\d+/.exec(link.getAttribute("sizes") || "");
+    return m ? +m[1] : 0;
+  }
+  function reportIcon() {
+    var links = Array.prototype.slice.call(document.querySelectorAll(
+        'link[rel~="icon"], link[rel~="apple-touch-icon"], link[rel~="apple-touch-icon-precomposed"]'));
+    links.sort(function (a, b) { return iconRank(a) - iconRank(b) || iconSize(b) - iconSize(a); });
+    var hrefs = links.map(function (l) { return l.href; }).filter(Boolean);
+    if (/^https?:$/.test(location.protocol)) hrefs.push(location.origin + "/favicon.ico");
+    sendIcon(hrefs.slice(0, 6), 0);
+  }
+  function sendIcon(hrefs, i) {
+    if (i >= hrefs.length) return;
+    var img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = function () {
+      try {
+        var canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 64;
+        canvas.getContext("2d").drawImage(img, 0, 0, 64, 64);
+        report({t: "icon", data: canvas.toDataURL("image/png")});
+      } catch (e) {
+        sendIcon(hrefs, i + 1);
+      }
+    };
+    img.onerror = function () { sendIcon(hrefs, i + 1); };
+    img.src = hrefs[i];
+  }
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", reportIcon);
+  else
+    reportIcon();
+
   window.__berry = {
     setSwipe: function (on) {
       swipe = !!on;
@@ -369,12 +435,6 @@
       var hay = body.toLowerCase(), needle = text.toLowerCase(), count = 0, i = 0;
       while ((i = hay.indexOf(needle, i)) !== -1 && count < 9999) { count++; i += needle.length; }
       return {found: found, count: count};
-    },
-    scrollY: function () {
-      return window.scrollY;
-    },
-    scrollTo: function (y) {
-      window.scrollTo(0, y);
     }
   };
 })();

@@ -8,24 +8,25 @@ QNX (Berry Browser's `content_shell`, build 106: Chromium 120).
 Berry Browser draws its own toolbar with Skia inside the engine. Berry
 Cascades runs the same engine with that toolbar off and puts Cascades around
 it instead, laid out like the stock BlackBerry 10 browser: the page fills the
-screen, and one dark bar along the bottom holds Tabs, Back, the address (with
+screen, and one dark bar along the bottom holds Back, the address (with
 a padlock on https and Stop/Reload) and the ⋮ menu, with a thin blue line
-above it while a page loads.
+above it while a page loads. Scrolling down slides it away and leaves a
+slim bar with the address; scrolling up or a tap on the slim bar brings it
+back. A swipe down from the top edge shows a strip with the page's favicon
+and title. The engine's window cannot resize, so it reaches down to the slim
+bar and Cascades clips it where the bars lie over it.
 
 - **Address** (bottom bar): shows the address without its scheme; tap it to
   type an address or a search, and Go loads it. While you type, it suggests
   a search with your search engine, then matching bookmarks and history.
 - **Search**: DuckDuckGo by default; also DuckDuckGo Lite (the html/ page,
   which works with JavaScript off), Google, Bing and Wikipedia.
-- **⋮ menu**, sliding in from the right: Forward, New tab, Home, Add to
+- **⋮ menu**, sliding in from the right: Forward, Home, Add to
   bookmarks, Bookmarks, History, Find in page, Select text, Paste, Share,
   Copy link, Downloads, Settings, Restart engine.
-- **Tabs**, as in webmee: tabs are addresses, not running pages. The engine
-  shows one page; switching loads the tab's address and puts it back where
-  it was scrolled to.
 - **History**: every page visited, newest first, searchable; hold to delete
   one, or clear it all.
-- **Long press** on a link or an image: Open, Open in new tab, Copy link,
+- **Long press** on a link or an image: Open, Copy link,
   Share link, Copy link text; Open image, Save image, Copy image address.
 - **Text selection**: hold on text to select a word, then drag the handles.
   The bottom bar then copies it, searches for it in a new tab, shares it,
@@ -59,10 +60,9 @@ above it while a page loads.
 
 The features beyond navigation follow
 [webmee](https://github.com/zsavajji/webmee)'s list (its Harmattan shell
-around WPE): search engines, history suggestions, tabs as addresses,
+around WPE): search engines, history suggestions,
 long-press menus, downloads, content settings and storage.
-Not carried over: HTTP authentication and saved passwords, page width,
-and hiding the address bar on scroll (the engine window cannot resize).
+Not carried over: HTTP authentication and saved passwords, and page width.
 
 ## Speed
 
@@ -183,8 +183,8 @@ and flags, the DevTools connection, and the exit code if the engine stops.
 
 ### Trade-offs
 
-- **One page at a time.** Tabs are addresses; new-window links open in
-  place, and all tabs share one back/forward history.
+- **One page at a time.** No tabs: new-window links open in place, and the
+  next start reopens the last page.
 - **Certificates.** Like Berry Browser, the engine skips HTTPS certificate
   verification by default (`--ignore-certificate-errors`), because it is slow
   and unreliable on QNX. Traffic is still encrypted, but a man in the middle

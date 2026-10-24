@@ -27,5 +27,9 @@ Q_DECL_EXPORT int main(int argc, char **argv)
         return 1;
 
     app.setScene(root);
+    // A swipe down from the top edge shows the page's title strip (Browser
+    // gets it from UIToolkitSupport), not Cascades' application menu, which
+    // this app does not have and which would otherwise slide down empty.
+    app.setMenuEnabled(false);
     return Application::exec();
 }

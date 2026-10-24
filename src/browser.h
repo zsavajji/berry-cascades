@@ -1,8 +1,10 @@
 #ifndef BERRY_BROWSER_H
 #define BERRY_BROWSER_H
 
+#include <QElapsedTimer>
 #include <QMap>
 #include <QObject>
+#include <QPointer>
 #include <QProcess>
 #include <QSettings>
 #include <QStringList>
@@ -10,6 +12,10 @@
 #include <QVariant>
 
 #include "devtools.h"
+
+namespace bb {
+class UIToolkitSupport;
+}
 
 namespace bb {
 namespace system {
@@ -23,10 +29,8 @@ class History;
 // The browser as QML sees it: starts the Chromium engine as a child process
 // whose window lands in the page's ForeignWindowControl, and drives it over
 // the DevTools protocol (navigation, history, keys, the page script in
-// assets/page.js). Also keeps the tabs, bookmarks and settings.
-//
-// Tabs are addresses, not running pages, as in webmee: the engine shows one
-// page, and switching tabs loads the other tab's address and scroll position.
+// assets/page.js). Also keeps the bookmarks, the settings and the last
+// page, which the next start opens.
 class Browser : public QObject
 {
     Q_OBJECT
@@ -41,12 +45,15 @@ class Browser : public QObject
     Q_PROPERTY(bool bookmarked READ bookmarked NOTIFY bookmarkedChanged)
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
     Q_PROPERTY(bool restartNeeded READ restartNeeded NOTIFY restartNeededChanged)
-    Q_PROPERTY(QVariantList tabs READ tabs NOTIFY tabsChanged)
-    Q_PROPERTY(int currentTab READ currentTab NOTIFY tabsChanged)
     Q_PROPERTY(bool selecting READ selecting NOTIFY selectionChanged)
     Q_PROPERTY(QString selectionText READ selectionText NOTIFY selectionChanged)
     Q_PROPERTY(bool editing READ editing NOTIFY editingChanged)
     Q_PROPERTY(QString searchName READ searchName NOTIFY searchChanged)
+    // A file:// address of the page's icon, or empty.
+    Q_PROPERTY(QString icon READ icon NOTIFY iconChanged)
+    // How far the full bar and the title strip are in, 0 (out) to 1 (in).
+    Q_PROPERTY(double barsIn READ barsIn NOTIFY barsMoved)
+    Q_PROPERTY(double titleIn READ titleIn NOTIFY barsMoved)
 
 public:
     Browser(History *history, Downloads *downloads, QObject *parent = 0);
@@ -63,12 +70,13 @@ public:
     bool bookmarked() const;
     double progress() const { return m_progress; }
     bool restartNeeded() const { return m_restartNeeded; }
-    QVariantList tabs() const { return m_tabs; }
-    int currentTab() const { return m_currentTab; }
     bool selecting() const { return m_selecting; }
     QString selectionText() const { return m_selectionText; }
     bool editing() const { return m_editing; }
     QString searchName() const;
+    QString icon() const { return m_icon; }
+    double barsIn() const { return m_barsIn; }
+    double titleIn() const { return m_titleIn; }
 
     // Starts the engine once the web view's size in pixels is known.
     Q_INVOKABLE void startEngine(int width, int height);
@@ -86,10 +94,6 @@ public:
 
     // Bookmarks, then history, matching what is typed in the address bar.
     Q_INVOKABLE QVariantList suggest(const QString &text) const;
-
-    Q_INVOKABLE void newTab(const QString &input = QString());
-    Q_INVOKABLE void switchTab(int index);
-    Q_INVOKABLE void closeTab(int index);
 
     // A key the page should get: Cascades' KeyEvent.key.
     Q_INVOKABLE void sendKey(int key);
@@ -115,6 +119,14 @@ public:
     // hidden under a menu or dialog; answered by snapshotReady.
     Q_INVOKABLE void snapshot();
 
+    // The stock bars, drawn by Cascades under the page's window (view, its
+    // ForeignWindowControl): heights in pixels of the title strip, the slim
+    // bar (always there) and the full bar. showBars slides the full bar and
+    // the title strip in or out (barsIn, titleIn) and clips the page's
+    // window in step, so they show where it no longer is.
+    Q_INVOKABLE void setBarHeights(int title, int slim, int full);
+    Q_INVOKABLE void showBars(QObject *view, bool bars, bool title, bool animate);
+
     // The engine's output and the app's own lines about it.
     Q_INVOKABLE QString logPath() const;
     Q_INVOKABLE QString logTail() const;
@@ -133,7 +145,6 @@ signals:
     // A file:// address of the page's picture, or empty when there is none.
     void snapshotReady(const QString &url);
     void restartNeededChanged();
-    void tabsChanged();
     void selectionChanged();
     void editingChanged();
     void searchChanged();
@@ -142,6 +153,11 @@ signals:
     // A long press on a link and/or an image; empty when not that kind.
     void contextMenu(const QString &link, const QString &linkText, const QString &image);
     void findResult(bool found, int count);
+    // The page scrolled down (the bars give way) or back up.
+    void pageScrolled(bool down);
+    void iconChanged();
+    void barsMoved();
+    void swipedDown();
 
 private slots:
     void launchIfIdle();
@@ -160,6 +176,8 @@ private slots:
     void snapshotTimedOut();
     void appVisible();
     void appHidden();
+    void swipeFromTop();
+    void stepBars();
 
 private:
     void launch();
@@ -173,8 +191,10 @@ private:
     void applyMobileView();
     void setProgress(double progress);
     void setPageActive(bool active);
-    void updateCurrentTab();
-    void saveTabs();
+    void rememberPage();
+    void setPageClip(int top, int bottom);
+    void saveIcon(const QString &dataUrl);
+    void setIcon(const QString &icon);
     QString fixUp(const QString &input) const;
     QString engineDir() const;
     void log(const QString &line) const;
@@ -205,10 +225,6 @@ private:
     int m_historyIndex;
     QVariantList m_historyIds;
 
-    QVariantList m_tabs;
-    int m_currentTab;
-    int m_pendingScroll;
-
     bool m_selecting;
     QString m_selectionText;
     bool m_editing;
@@ -220,6 +236,16 @@ private:
     int m_snapshotCount;
     QTimer m_snapshotTimer;
     bool m_pageActive;
+
+    bb::UIToolkitSupport *m_toolkit;
+
+    QPointer<QObject> m_pageView;
+    int m_titleHeight, m_slimHeight, m_fullHeight;
+    double m_barsIn, m_titleIn, m_barsFrom, m_titleFrom, m_barsTo, m_titleTo;
+    QElapsedTimer m_barsClock;
+    QTimer m_barsTimer;
+    QString m_icon;
+    int m_iconCount;
 };
 
 #endif

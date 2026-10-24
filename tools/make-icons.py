@@ -194,21 +194,6 @@ def chevron(name, up):
     save(img, name)
 
 
-def tabs_icon():
-    img, d = canvas()
-    line(d, [(26, 18), (64, 18), (64, 52)], width=5 * S)
-    line(d, [(16, 28), (54, 28), (54, 64), (16, 64), (16, 28)], width=5 * S)
-    save(img, "tabs.png")
-
-
-def new_tab_icon():
-    img, d = canvas()
-    line(d, [(16, 22), (52, 22), (52, 62), (16, 62), (16, 22)], width=5 * S)
-    line(d, [(62, 8), (62, 30)], width=5 * S)
-    line(d, [(51, 19), (73, 19)], width=5 * S)
-    save(img, "newtab.png")
-
-
 def history_icon():
     img, d = canvas()
     arc(d, (16, 16, 65, 65), 0, 360)
@@ -267,8 +252,6 @@ if __name__ == "__main__":
     select_all_icon()
     chevron("up.png", True)
     chevron("down.png", False)
-    tabs_icon()
-    new_tab_icon()
     history_icon()
     paste_icon()
     downloads_icon()
