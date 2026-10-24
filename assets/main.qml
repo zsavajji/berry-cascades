@@ -230,8 +230,8 @@ Page {
                         disabledImageSource: "asset:///images/back.png"
                         enabled: address.focused || page.typing || browser.canGoBack
                         opacity: enabled ? 1.0 : 0.35
-                        preferredWidth: ui.du(5.5)
-                        preferredHeight: ui.du(5.5)
+                        preferredWidth: ui.du(6)
+                        preferredHeight: ui.du(6)
                         onTouch: {
                             if (event.isDown())
                                 page.backCancels = address.focused || page.typing
@@ -254,7 +254,8 @@ Page {
                         rightMargin: ui.du(1)
                         leftPadding: ui.du(1)
                         rightPadding: ui.du(0.5)
-                        background: Color.create("#121212")
+                        minHeight: ui.du(8)
+                        background: Color.create("#191919")
                         layoutProperties: StackLayoutProperties {
                             spaceQuota: 1
                         }
@@ -264,7 +265,8 @@ Page {
                         ImageView {
                             visible: !address.focused && browser.url.indexOf("https://") == 0
                             imageSource: "asset:///images/lock.png"
-                            preferredWidth: ui.du(3.8)
+                            minWidth: ui.du(3.8)
+                            maxWidth: ui.du(3.8)
                             preferredHeight: ui.du(3.8)
                             verticalAlignment: VerticalAlignment.Center
                         }
@@ -274,6 +276,8 @@ Page {
                             hintText: qsTr("Search or enter an address")
                             inputMode: TextFieldInputMode.Url
                             backgroundVisible: false
+                            textStyle.fontSize: FontSize.PercentageValue
+                            textStyle.fontSizeValue: 108
                             clearButtonVisible: true
                             textStyle.color: Color.White
                             verticalAlignment: VerticalAlignment.Center
@@ -331,8 +335,8 @@ Page {
                             verticalAlignment: VerticalAlignment.Center
                             defaultImageSource: browser.loading ? "asset:///images/stop.png" : "asset:///images/reload.png"
                             pressedImageSource: defaultImageSource
-                            preferredWidth: ui.du(4.5)
-                            preferredHeight: ui.du(4.5)
+                            preferredWidth: ui.du(6.5)
+                            preferredHeight: ui.du(6.5)
                             onClicked: browser.loading ? browser.stop() : browser.reload()
                         }
                     }
@@ -358,8 +362,8 @@ Page {
                         rightMargin: ui.du(1.2)
                         defaultImageSource: "asset:///images/overflow.png"
                         pressedImageSource: "asset:///images/overflow.png"
-                        preferredWidth: ui.du(5.5)
-                        preferredHeight: ui.du(5.5)
+                        preferredWidth: ui.du(6)
+                        preferredHeight: ui.du(6)
                         onClicked: page.openMenu()
                     }
                 }
