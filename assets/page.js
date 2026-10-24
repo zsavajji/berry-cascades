@@ -119,6 +119,15 @@
     if (!editable(e.target)) e.preventDefault();
   }, true);
 
+  // Chromium's own long press on text starts a selection of its own, with
+  // its native touch handles, which crash Berry's engine (a failed CHECK in
+  // flat_map, as in Berry Browser). It comes late, after the page has been
+  // busy, so only cancelling it works; this script selects with a Range.
+  document.addEventListener("selectstart", function (e) {
+    if (!editable(e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement))
+      e.preventDefault();
+  }, true);
+
   function longPress() {
     var p = press;
     press = null;
@@ -141,71 +150,104 @@
   }
 
   // ---- text selection ----------------------------------------------------
+  // The page's own selection is never used for this: whatever Chromium sees
+  // selected after a long press gets its native touch handles, and those
+  // crash Berry's engine. The selected text is a Range instead, drawn here as
+  // highlight boxes with two handles.
 
   var selecting = false;
+  var range = null;         // what is selected
   var drag = null;          // "start" or "end" while a handle is dragged
-  var handles = null;
+  var layer = null;         // {boxes, start, end}
   var lastText = "";
   var raf = 0;
+  var words = new Intl.Segmenter(undefined, {granularity: "word"});
+  var BLUE = "#00a8df";
 
   function selectWordAt(x, y) {
-    var r = document.caretRangeFromPoint(x, y);
-    if (!r || r.startContainer.nodeType !== 3) return false;
-    var s = getSelection();
-    s.removeAllRanges();
-    s.collapse(r.startContainer, r.startOffset);
-    s.modify("move", "forward", "character");
-    s.modify("move", "backward", "word");
-    s.modify("extend", "forward", "word");
-    if (!s.toString().trim()) {
-      s.removeAllRanges();
-      return false;
-    }
+    var c = document.caretRangeFromPoint(x, y);
+    if (!c || c.startContainer.nodeType !== 3) return false;
+    var node = c.startContainer, at = c.startOffset;
+    var segments = words.segment(node.data);
+    // The caret can sit just after the word the finger is on.
+    var word = segments.containing(at);
+    if ((!word || !word.isWordLike) && at > 0) word = segments.containing(at - 1);
+    if (!word || !word.isWordLike) return false;
+    range = document.createRange();
+    range.setStart(node, word.index);
+    range.setEnd(node, word.index + word.segment.length);
     startSelection();
     return true;
   }
 
+  function fixed(css) {
+    var el = document.createElement("div");
+    el.style.cssText = "position:fixed;z-index:2147483647;margin:0;padding:0;border:0;" +
+        "pointer-events:none;display:none;" + css;
+    document.documentElement.appendChild(el);
+    return el;
+  }
+
+  // A handle: a line along the text's edge with a round grip below it.
   function makeHandle() {
-    var h = document.createElement("div");
-    h.style.cssText = "position:fixed;z-index:2147483647;width:14px;height:22px;" +
-        "margin:0;padding:0;border:0;background:#7a40c4;pointer-events:none;" +
-        "border-radius:0 0 7px 7px;box-shadow:0 1px 2px rgba(0,0,0,.4);display:none";
-    document.documentElement.appendChild(h);
+    var h = fixed("width:2px;background:" + BLUE);
+    var grip = document.createElement("div");
+    grip.style.cssText = "position:absolute;left:-8px;bottom:-16px;width:18px;height:18px;" +
+        "border-radius:9px;background:" + BLUE + ";box-shadow:0 1px 2px rgba(0,0,0,.4)";
+    h.appendChild(grip);
     return h;
   }
 
+  function hide() {
+    if (!layer) return;
+    layer.start.style.display = layer.end.style.display = "none";
+    for (var i = 0; i < layer.boxes.length; i++) layer.boxes[i].style.display = "none";
+  }
+
   function edges() {
-    var s = getSelection();
-    if (!s.rangeCount) return null;
-    var rects = s.getRangeAt(0).getClientRects();
+    var rects = range ? range.getClientRects() : [];
     if (!rects.length) return null;
     var a = rects[0], b = rects[rects.length - 1];
-    return {start: {x: a.left, y: a.bottom}, end: {x: b.right, y: b.bottom}};
+    return {rects: rects, start: {x: a.left, top: a.top, y: a.bottom},
+            end: {x: b.right, top: b.top, y: b.bottom}};
   }
 
   function placeHandles() {
     raf = 0;
-    if (!handles) return;
+    if (!layer) return;
     var e = edges();
-    if (!e) {
-      handles.start.style.display = handles.end.style.display = "none";
-      return;
+    hide();
+    if (!e) return;
+    // Highlight what is on screen, at most 200 boxes (select all).
+    var shown = 0;
+    for (var i = 0; i < e.rects.length && shown < 200; i++) {
+      var r = e.rects[i];
+      if (r.bottom < 0 || r.top > innerHeight || !r.width) continue;
+      var box = layer.boxes[shown] || (layer.boxes[shown] = fixed("background:rgba(0,168,223,.3)"));
+      box.style.display = "block";
+      box.style.left = r.left + "px";
+      box.style.top = r.top + "px";
+      box.style.width = r.width + "px";
+      box.style.height = r.height + "px";
+      shown++;
     }
-    handles.start.style.display = handles.end.style.display = "block";
-    handles.start.style.left = (e.start.x - 14) + "px";
-    handles.start.style.top = e.start.y + "px";
-    handles.end.style.left = e.end.x + "px";
-    handles.end.style.top = e.end.y + "px";
+    var ends = [[layer.start, e.start], [layer.end, e.end]];
+    for (var j = 0; j < 2; j++) {
+      var h = ends[j][0], p = ends[j][1];
+      h.style.display = "block";
+      h.style.left = (p.x - 1) + "px";
+      h.style.top = p.top + "px";
+      h.style.height = (p.y - p.top) + "px";
+    }
   }
 
   function schedule() {
     if (!raf) raf = requestAnimationFrame(placeHandles);
   }
 
-  function onSelectionChange() {
-    if (!selecting) return;
+  function changed() {
     schedule();
-    var text = getSelection().toString();
+    var text = range ? range.toString() : "";
     if (text !== lastText) {
       lastText = text;
       report({t: "selection", text: text.slice(0, 10000)});
@@ -213,7 +255,7 @@
   }
 
   function near(p, x, y) {
-    return Math.abs(p.x - x) < HANDLE_REACH && y > p.y - HANDLE_REACH && y < p.y + HANDLE_REACH + 22;
+    return Math.abs(p.x - x) < HANDLE_REACH && y > p.top - HANDLE_REACH && y < p.y + HANDLE_REACH + 18;
   }
 
   function onSelectTouchStart(e) {
@@ -230,22 +272,20 @@
   }
 
   function onSelectTouchMove(e) {
-    if (!drag) return;
+    if (!drag || !range) return;
     e.preventDefault();
     var t = e.touches[0];
     // Aim above the finger, which covers the text it is moving over.
     var r = document.caretRangeFromPoint(t.clientX, t.clientY - 28);
     if (!r) return;
-    var s = getSelection();
-    if (!s.rangeCount) return;
-    var cur = s.getRangeAt(0);
     if (drag === "end") {
-      if (cur.comparePoint(r.startContainer, r.startOffset) < 0) return;
-      s.setBaseAndExtent(cur.startContainer, cur.startOffset, r.startContainer, r.startOffset);
+      if (range.comparePoint(r.startContainer, r.startOffset) < 0) return;
+      range.setEnd(r.startContainer, r.startOffset);
     } else {
-      if (cur.comparePoint(r.startContainer, r.startOffset) > 0) return;
-      s.setBaseAndExtent(r.startContainer, r.startOffset, cur.endContainer, cur.endOffset);
+      if (range.comparePoint(r.startContainer, r.startOffset) > 0) return;
+      range.setStart(r.startContainer, r.startOffset);
     }
+    changed();
   }
 
   function onSelectTouchEnd() {
@@ -253,11 +293,10 @@
   }
 
   function startSelection() {
-    if (!handles) handles = {start: makeHandle(), end: makeHandle()};
-    lastText = getSelection().toString();
+    if (!layer) layer = {boxes: [], start: makeHandle(), end: makeHandle()};
+    lastText = range ? range.toString() : getSelection().toString();
     if (!selecting) {
       selecting = true;
-      document.addEventListener("selectionchange", onSelectionChange);
       addEventListener("scroll", schedule, true);
       addEventListener("resize", schedule);
       document.addEventListener("touchstart", onSelectTouchStart, {capture: true, passive: false});
@@ -272,14 +311,13 @@
     if (!selecting) return;
     selecting = false;
     drag = null;
-    document.removeEventListener("selectionchange", onSelectionChange);
+    range = null;
     removeEventListener("scroll", schedule, true);
     removeEventListener("resize", schedule);
     document.removeEventListener("touchstart", onSelectTouchStart, {capture: true, passive: false});
     document.removeEventListener("touchmove", onSelectTouchMove, {capture: true, passive: false});
     document.removeEventListener("touchend", onSelectTouchEnd, true);
-    if (handles) handles.start.style.display = handles.end.style.display = "none";
-    getSelection().removeAllRanges();
+    hide();
     if (notify) report({t: "selectionEnd"});
   }
 
@@ -304,7 +342,7 @@
       applySwipe();
     },
     selectionText: function () {
-      return getSelection().toString();
+      return range ? range.toString() : getSelection().toString();
     },
     clearSelection: function () {
       endSelection(false);
@@ -312,16 +350,15 @@
     selectAll: function () {
       var el = document.activeElement;
       if (editable(el) && el.select) {
+        // Inside a field the field's own selection is what gets copied.
+        range = null;
         el.select();
       } else {
-        var s = getSelection();
-        s.removeAllRanges();
-        var r = document.createRange();
-        r.selectNodeContents(document.body || document.documentElement);
-        s.addRange(r);
+        range = document.createRange();
+        range.selectNodeContents(document.body || document.documentElement);
       }
       startSelection();
-      return getSelection().toString().length;
+      return lastText.length;
     },
     // Finds text from the current selection on; returns {found, count}.
     find: function (text, backwards) {
