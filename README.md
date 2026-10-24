@@ -29,8 +29,12 @@ bar and Cascades clips it where the bars lie over it.
 - **Long press** on a link or an image: Open, Copy link,
   Share link, Copy link text; Open image, Save image, Copy image address.
 - **Text selection**: hold on text to select a word, then drag the handles.
-  The bottom bar then copies it, searches for it in a new tab, shares it,
-  selects all, or ends the selection. A tap on the page ends it too.
+  The bottom bar then copies it, searches for it, shares it, selects all, or
+  ends the selection. A tap on the page ends it too. The page script draws
+  the selection itself: Chromium's own touch selection crashes this engine
+  (as it does Berry Browser), so the script blocks it.
+- **Active Frame**: minimized, the browser shows the page's favicon, title
+  and address.
 - **Find in page**, with the number of matches and previous/next.
 - **Paste** into the page's focused field (a button appears in the bar
   while one is focused), and the hardware keyboard types into the page.

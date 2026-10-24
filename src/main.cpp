@@ -1,6 +1,8 @@
 #include <bb/cascades/AbstractPane>
 #include <bb/cascades/Application>
+#include <bb/cascades/Container>
 #include <bb/cascades/QmlDocument>
+#include <bb/cascades/SceneCover>
 
 #include "browser.h"
 #include "downloads.h"
@@ -31,5 +33,14 @@ Q_DECL_EXPORT int main(int argc, char **argv)
     // gets it from UIToolkitSupport), not Cascades' application menu, which
     // this app does not have and which would otherwise slide down empty.
     app.setMenuEnabled(false);
+
+    // The Active Frame (minimized): the page's icon, title and address.
+    QmlDocument *coverDocument = QmlDocument::create("asset:///cover.qml").parent(&app);
+    coverDocument->setContextProperty("browser", &browser);
+    if (Container *coverContent = coverDocument->createRootObject<Container>()) {
+        SceneCover *cover = new SceneCover(&app);
+        cover->setContent(coverContent);
+        app.setCover(cover);
+    }
     return Application::exec();
 }
