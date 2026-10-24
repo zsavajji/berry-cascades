@@ -640,6 +640,7 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
 void Browser::failed(int id, const QString &method, const QString &message)
 {
     m_evaluations.remove(id);
+    log(QString("DevTools refused %1: %2").arg(method, message));
     if (method == "Page.navigate")
         emit this->message(message);
 }
@@ -775,11 +776,13 @@ void Browser::snapshotTimedOut()
 
 void Browser::appVisible()
 {
+    log("app in full screen");
     setPageActive(true);
 }
 
 void Browser::appHidden()
 {
+    log("app minimized or the screen off");
     if (setting("pauseInBackground").toBool())
         setPageActive(false);
 }
@@ -791,6 +794,7 @@ void Browser::setPageActive(bool active)
     if (active == m_pageActive)
         return;
     m_pageActive = active;
+    log(active ? "page active" : "page frozen");
     QVariantMap params;
     params["state"] = QString(active ? "active" : "frozen");
     m_devtools->call("Page.setWebLifecycleState", params);
