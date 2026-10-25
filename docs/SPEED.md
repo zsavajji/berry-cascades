@@ -20,6 +20,14 @@ process model or GC setting changed them. What helps is running less
 JavaScript, not re-downloading or re-decoding, and keeping the other cores
 free for the main thread.
 
+The engine's watchdog logs them (`QNX:MT stall=…ms … non-GC(JS/paint)`). On
+a Q10 on 2026-10-25, one session of ChromeBerry on news sites logged 173:
+median 4.6 s, 90th percentile 10.7 s, longest 37.6 s. Berry Browser's own log
+from the same phone has the same median (4.7 s), so they are the engine's,
+not the app's or its blocklist's. Anything that waits for the main thread
+(DevTools' `Page.captureScreenshot`, `Runtime.evaluate`) waits as long; the
+app avoids it where it has to be quick.
+
 ## What the app does (0.3.0)
 
 | Change | Why | Source |
@@ -30,7 +38,8 @@ free for the main thread.
 | **Frame cap by CPU**: 45 fps on quad-core, 30 on dual-core; Settings → Frame rate cap | Fewer frames on animated pages leave the main thread more time. | notes §6, launcher `QNX_MAX_FPS` |
 | **Lighter WebAssembly** (Settings; `--no-wasm-tier-up --wasm-lazy-validation`) | Tier-up recompiles hot WASM on every core just as web apps start. Berry's WhatsApp app ships this way. Off by default. | notes §18a |
 | **Lists load only while their sheet is open** (history, bookmarks, tabs, downloads) | They were rebuilt on every page visit and download-progress event, on the UI thread, while the page loaded. | — |
-| **Snapshot of the page under the menu and dialogs** (`Page.captureScreenshot`, JPEG) | The engine window must be hidden under Cascades UI; showing a picture of it keeps the stock look and costs one small JPEG. | — |
+| **Snapshot of the page under the menus and the address**, read from the engine's window (`screen_read_window`) and handed to Cascades as pixels | The engine window must be hidden under Cascades UI; a picture of it keeps the stock look. `Page.captureScreenshot` (still the fallback) waited for the stalled main thread, so menus opened over a blank page. | — |
+| **Trackpad scrolling as a mouse wheel** (`Input.dispatchMouseEvent`) | The compositor scrolls it off the main thread, so it moves during stalls; `window.scrollBy` would wait for them. | — |
 
 Already on before 0.3.0 (Berry's launcher defaults): GPU rasterization,
 low-end device mode, accessibility off, a 256 MB HTTP and media cache, mobile

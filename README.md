@@ -47,11 +47,22 @@ bar and Cascades clips it where the bars lie over it.
   page itself is never blocked, only what it loads.
 - **Find in page**, with the number of matches and previous/next.
 - **Paste** into the page's focused field (a button appears in the bar
-  while one is focused), and the hardware keyboard types into the page.
+  while one is focused).
+- **Keyboard**: a text box in the page types as the phone's own text fields
+  do, because its keys go through one: an unseen Cascades field takes the
+  keyboard while the box has the focus, passes what it types to the page
+  (`Input.insertText`) and empties itself. So tapped Alt and Shift with the
+  system's indicator, holding them to lock, the symbol key's picker, a held
+  key's accents and, on touch-only phones, the on-screen keyboard all work.
+  Outside text boxes, keys go to the page as key events (Space scrolls).
+- **Trackpad and keyboard swipes** (Q20, Passport) scroll the page, as a
+  mouse wheel the engine scrolls off its main thread.
 - **Downloads**: pages' downloads and saved images go to the shared
   Downloads folder; the Downloads sheet shows progress and opens files.
   Saved images are loaded by the engine (`Network.loadNetworkResource`):
   Qt on BB10 speaks only TLS 1.0, which today's sites refuse.
+- **Messages** ("Download complete: …", "Copied") slide in at the top in the
+  title strip for a moment: a system toast would be under the page's window.
 - **Mobile view** on by default: the engine is a desktop content_shell that
   only sent a mobile user agent, so pages ignored their mobile viewport and
   saw a mouse. DevTools' mobile device mode (`Emulation.setDeviceMetricsOverride`
@@ -113,13 +124,16 @@ toolchain gap, and a milestone plan.
   `qnx_screen` window makes itself a top-level window with its own group; the
   shim makes it a child window that joins the Cascades window group with the
   `ForeignWindowControl`'s `windowId`, so Cascades places it under the address
-  bar. It also leaves keyboard focus and the Navigator to the Cascades
-  process.
+  bar. It also leaves the keyboard and the Navigator to the Cascades
+  process: the window takes touches but never the keyboard
+  (`SCREEN_SENSITIVITY_NO_FOCUS`), which Screen otherwise gives to the
+  window last touched.
 - `src/devtools.cpp` speaks the DevTools protocol over a small WebSocket
   client (Qt 4 has none): `Page.navigate`, `Page.getNavigationHistory`,
   `Page.navigateToHistoryEntry`, `Page.reload`, `Page.stopLoading`, and
-  `Input.dispatchKeyEvent` for the hardware keyboard. Page events keep the
-  address bar, title and Back/Forward up to date.
+  `Input.insertText`, `Input.dispatchKeyEvent` and `Input.dispatchMouseEvent`
+  for the keyboard and the trackpad. Page events keep the address bar, title
+  and Back/Forward up to date.
 - `assets/page.js` runs in every page. It reports touches (so the address
   bar gives up the keyboard), long presses, text selection and focused
   fields through a DevTools binding, and draws the selection handles. It also
@@ -130,10 +144,14 @@ toolchain gap, and a milestone plan.
   target (`Browser.setDownloadBehavior`), and writes saved images, which the
   engine loads for it.
 - `src/history.cpp` keeps the visited pages in `history.json`.
-- The engine's window is drawn above the Cascades window, so it is hidden
-  while the menu, a sheet, a dialog or the suggestions are showing. Under
-  the menu and dialogs, a snapshot of the page (`Page.captureScreenshot`)
-  stands in for it.
+- The engine's window is drawn above the Cascades window (Cascades shows
+  through only where `Browser::setPageClip` cuts it, under the bars), so it
+  is hidden while the menu, a sheet, a dialog or the suggestions are
+  showing, and while the address is edited (the text magnifier is drawn
+  above the bar). Under the menus and the address, a snapshot of the page
+  stands in for it, read from the engine's window (`screen_read_window`) at
+  once: `Page.captureScreenshot`, the fallback, waits for the engine's main
+  thread, which stalls for seconds on heavy pages.
 
 ## The engine
 
@@ -186,25 +204,24 @@ DDPB. It installs next to Berry Browser.
 
 ## Status
 
-The app, the shim and the package build cleanly with the 10.3.1 SDK, and the
-QML passes a syntax check. Against desktop Chromium with emulated touches:
-the DevTools sequence (handshake, binding, navigation, history, typing),
-`page.js` (tap, long press on text, link and image, dragging a selection
-handle, ending a selection, focused fields, find, select all, `window.open`)
-and the download flow. **It has not been run on a BlackBerry yet.** These parts can
-only be confirmed on a phone:
+The app, the shim and the package build cleanly with the 10.3.1 SDK
+(the QML imports `bb.cascades 1.4`), and the QML passes a syntax check
+(Qt 6's `qmllint`, which knows QML but not Cascades' types). It runs on a
+BlackBerry Q10 with OS 10.3.3: the page, taps, the bars, menus, selection,
+downloads, the blocklist and the keyboard (symbol key included) are tried
+there. Not tried yet: the trackpad (Q20), the touch keyboard's swipes
+(Passport) and the on-screen keyboard of a touch-only phone (Z30); the
+trackpad's scroll speed is a guess (`kWheelPerUnit` in `src/browser.cpp`).
 
-- **The child window.** Joining the Cascades group should make the engine
-  appear above the bottom bar. If the page is turned, try Settings, Engine
-  window, Rotation. Berry Browser's own window needs 90° as a top-level window.
-  As a child window, 0° is the guess.
-- **Taps.** The Screen headers do not say which space a child window's touch
-  positions are in. By default the shim uses the buffer position
-  (`SOURCE_POSITION`). If taps land in the wrong place, try Tap mapping
-  *Window* or *Display*. Both settings apply after Restart engine.
-- **Keys.** The hardware keyboard reaches the page through
-  `Input.dispatchKeyEvent`, using Cascades' `KeyEvent.key` (sys/keycodes.h for
-  special keys).
+If the page is turned or taps land in the wrong place on another phone,
+Settings, Engine window has Rotation and Tap mapping (*Source*, *Window*,
+*Display*); both apply after Restart engine.
+
+The Q10 cuts some key codes to their low byte: Shift (`0xF0E1`) comes as
+`á`, Alt (`0xF0E9`) as `é`, the symbol key (`0xF0D3`) as `Ó`, Delete
+(`0xF0FF`) as `ÿ`. A key whose cap is a code, or a modifier's byte with no
+cap of its own, is taken for the code (`pageKey` in `assets/main.qml`, as
+in [term51](https://github.com/zsavajji/term51)).
 
 The engine log is `/accounts/1000/shared/misc/chromeberry-engine.log`
 (the **misc** folder in File Manager), or `engine.log` in the app's data
@@ -212,7 +229,8 @@ folder when the app has no shared-files access. Settings → Engine log shows
 its path and its last 24 KB, and can copy it. Besides the engine's output it
 has the app's own lines (`[chromeberry …]`): each start with its size, port
 and flags, the DevTools connection, and the exit code if the engine stops.
-*Detailed engine log* adds Chromium's own logging.
+*Detailed engine log* adds Chromium's own logging. Past 2 MB the log keeps
+its newest megabyte.
 
 ### Trade-offs
 
@@ -234,6 +252,12 @@ and flags, the DevTools connection, and the exit code if the engine stops.
 - **Size changes.** The engine cannot resize its window, so a new web view
   size (e.g. the action bar's) applies at the next engine restart.
   The keyboard covers the page instead of shrinking it.
+- **Nothing over the page.** The engine's window has to lie above the
+  Cascades window: below it (a negative Z-order, as `ForeignWindowControl`
+  is meant to be used) the page shows through but Cascades gets its
+  touches. So no system toast, magnifier or Cascades overlay can show over a
+  live page: messages go in the title strip, and the page's snapshot stands
+  in for it under the menus and the address.
 
 ## Licences
 
