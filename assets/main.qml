@@ -1,5 +1,6 @@
 import bb.cascades 1.3
 import bb.system 1.2
+import chromeberry 1.0
 
 // Laid out like the stock BlackBerry 10 browser: the page fills the screen
 // and one dark bar along the bottom carries Back, the address and the
@@ -11,7 +12,8 @@ import bb.system 1.2
 // Cascades has something to show there (the menu, a sheet, a dialog, the
 // address suggestions, the text magnifier while the address is edited). A
 // snapshot of the page stands in for it under the menu, dialogs and the
-// address.
+// address. A system toast would be covered too, so messages show in the
+// title strip.
 Page {
     id: page
     actionBarVisibility: ChromeVisibility.Hidden
@@ -32,6 +34,7 @@ Page {
     property bool focusAsked: false   // the address's cover was tapped
     property bool editCovered: false   // the snapshot stands in for the page while editing
     property real submitTime    // when Go was pressed: its Enter is not for the page
+    property string notice      // shown in the title strip for a moment
     // Not tied to the address having focus: a tap on a suggestion takes the
     // focus away first. Picking one, Go or Back ends the typing.
     property bool showSuggestions: typing && address.text.length > 0
@@ -61,7 +64,7 @@ Page {
     // Editing, finding, selecting and the menus need the full bar.
     property bool barsShown: !barsHidden || address.focused || finding || browser.selecting || covered
     property bool titleShown: false
-    property bool titleIn: titleShown && barsShown
+    property bool titleIn: (titleShown && barsShown) || notice != ""
     // Browser slides them (browser.barsIn, browser.titleIn) and clips the
     // page's window in step.
     onBarsShownChanged: browser.showBars(webView, barsShown, titleIn, true)
@@ -272,7 +275,7 @@ Page {
                 orientation: LayoutOrientation.LeftToRight
             }
             ImageView {
-                visible: browser.icon != ""
+                visible: browser.icon != "" && page.notice == ""
                 verticalAlignment: VerticalAlignment.Center
                 imageSource: browser.icon
                 preferredWidth: ui.du(3.5)
@@ -281,7 +284,8 @@ Page {
             }
             Label {
                 verticalAlignment: VerticalAlignment.Center
-                text: browser.title != "" ? browser.title : page.displayUrl(browser.url)
+                text: page.notice != "" ? page.notice
+                    : browser.title != "" ? browser.title : page.displayUrl(browser.url)
                 textStyle.fontSize: FontSize.XSmall
                 textStyle.color: Color.White
             }
@@ -852,8 +856,17 @@ Page {
                 onDone: settingsSheet.close()
             }
         },
+        Timer {
+            id: noticeTimer
+            singleShot: true
+            interval: 2500
+            onTimeout: page.notice = ""
+        },
+        // Messages while the page's window is hidden; otherwise it would cover them.
         SystemToast {
             id: toast
+            // A message while one is still showing replaces it.
+            autoUpdateEnabled: true
         },
         // Sharing text from a button: set the data, and trigger once armed.
         Invocation {
@@ -955,8 +968,13 @@ Page {
 
     onCreationCompleted: {
         var notify = function (text) {
-            toast.body = text
-            toast.show()
+            if (page.covered) {
+                toast.body = text
+                toast.show()
+                return
+            }
+            page.notice = text
+            noticeTimer.start()
         }
         browser.message.connect(notify)
         downloads.message.connect(notify)

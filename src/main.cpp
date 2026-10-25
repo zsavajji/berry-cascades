@@ -3,6 +3,8 @@
 #include <bb/cascades/Container>
 #include <bb/cascades/QmlDocument>
 #include <bb/cascades/SceneCover>
+#include <QTimer>
+#include <QtDeclarative>
 
 #include "browser.h"
 #include "downloads.h"
@@ -17,6 +19,7 @@ Q_DECL_EXPORT int main(int argc, char **argv)
     Downloads downloads(&app);
     Browser browser(&history, &downloads, &app);
 
+    qmlRegisterType<QTimer>("chromeberry", 1, 0, "Timer");
     QmlDocument *document = QmlDocument::create("asset:///main.qml").parent(&app);
     if (document->hasErrors())
         return 1;
