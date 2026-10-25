@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 156 156" width="100%" height="100%">
+  <defs>
+    <path id="arrow" d="M75.5 79 L36 72 L34.4 81 L56.7 84.9 L22 111.5 C15 117 4 126 2.6 137 C1.8 143.5 4.5 147.2 8.5 147.8 C7.3 146.8 7.2 144 7.6 141 C8.6 137.5 12.5 133 17 129.5 C20.5 126.8 24 123 28 120 L64.8 92.5 L59.3 121.8 L67.3 122.6 Z" stroke-width="1" stroke-linejoin="round"/>
+    <clipPath id="disc"><circle cx="78" cy="78" r="78"/></clipPath>
+  </defs>
+  <!-- back of the orbit ribbon, passes behind the logo -->
+  <path fill="#1c3a72" d="M17 129.5 C12.5 133 8.6 137.5 7.6 141 C7.2 144 7.3 146.8 8.5 147.8 C11 148.7 17 148.7 22 148 C29 146.6 35 144.2 42 141.3 L42 138 C35 139.6 28 141 22 141.9 C16 142.7 12 143.4 10 143.8 C9.3 141.5 10 138.6 11.2 136.8 C13 134 15.5 131.2 19 128.3 Z"/>
+  <!-- Chromium logo (Wikimedia Chromium_Logo.svg) in place of the globe -->
+  <g transform="scale(1.15155)">
+    <path d="m67.733 67.733 29.33 16.933-29.33 50.8c37.408 0 67.733-30.325 67.733-67.733 0-12.341-3.3168-23.901-9.0837-33.867h-58.65z" fill="#afccf9"/>
+    <path d="m67.733-1e-6c-25.07 0-46.942 13.63-58.654 33.875l29.324 50.792 29.33-16.933v-33.867h58.65c-11.714-20.24-33.583-33.867-58.65-33.867z" fill="#1767d1"/>
+    <path d="m0 67.733c0 37.408 30.324 67.733 67.733 67.733l29.33-50.8-29.33-16.933-29.33 16.933-29.324-50.792c-5.7637 9.9632-9.0794 21.519-9.0794 33.858" fill="#679ef5"/>
+    <path d="m101.6 67.733c0 18.704-15.163 33.867-33.867 33.867-18.704 0-33.867-15.163-33.867-33.867s15.163-33.867 33.867-33.867c18.704 0 33.867 15.163 33.867 33.867" fill="#fff"/>
+    <path d="m95.25 67.733c0 15.197-12.32 27.517-27.517 27.517-15.197 0-27.517-12.32-27.517-27.517 0-15.197 12.32-27.517 27.517-27.517 15.197 0 27.517 12.32 27.517 27.517" fill="#1a74e7"/>
+  </g>
+  <!-- arrow depth, kept inside the disc like the original -->
+  <g clip-path="url(#disc)" fill="#0d4c9c" stroke="#0d4c9c">
+    <use href="#arrow" transform="translate(6.000 8.000)"/>
+    <use href="#arrow" transform="translate(5.812 7.750)"/>
+    <use href="#arrow" transform="translate(5.625 7.500)"/>
+    <use href="#arrow" transform="translate(5.438 7.250)"/>
+    <use href="#arrow" transform="translate(5.250 7.000)"/>
+    <use href="#arrow" transform="translate(5.062 6.750)"/>
+    <use href="#arrow" transform="translate(4.875 6.500)"/>
+    <use href="#arrow" transform="translate(4.688 6.250)"/>
+    <use href="#arrow" transform="translate(4.500 6.000)"/>
+    <use href="#arrow" transform="translate(4.312 5.750)"/>
+    <use href="#arrow" transform="translate(4.125 5.500)"/>
+    <use href="#arrow" transform="translate(3.938 5.250)"/>
+    <use href="#arrow" transform="translate(3.750 5.000)"/>
+    <use href="#arrow" transform="translate(3.562 4.750)"/>
+    <use href="#arrow" transform="translate(3.375 4.500)"/>
+    <use href="#arrow" transform="translate(3.188 4.250)"/>
+    <use href="#arrow" transform="translate(3.000 4.000)"/>
+    <use href="#arrow" transform="translate(2.812 3.750)"/>
+    <use href="#arrow" transform="translate(2.625 3.500)"/>
+    <use href="#arrow" transform="translate(2.438 3.250)"/>
+    <use href="#arrow" transform="translate(2.250 3.000)"/>
+    <use href="#arrow" transform="translate(2.062 2.750)"/>
+    <use href="#arrow" transform="translate(1.875 2.500)"/>
+    <use href="#arrow" transform="translate(1.688 2.250)"/>
+    <use href="#arrow" transform="translate(1.500 2.000)"/>
+    <use href="#arrow" transform="translate(1.312 1.750)"/>
+    <use href="#arrow" transform="translate(1.125 1.500)"/>
+    <use href="#arrow" transform="translate(0.938 1.250)"/>
+    <use href="#arrow" transform="translate(0.750 1.000)"/>
+    <use href="#arrow" transform="translate(0.562 0.750)"/>
+    <use href="#arrow" transform="translate(0.375 0.500)"/>
+    <use href="#arrow" transform="translate(0.188 0.250)"/>
+  </g>
+  <use href="#arrow" fill="#fff" stroke="#fff"/>
+</svg>

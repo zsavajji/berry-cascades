@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Draws the action bar icons (white line art, 81x81) and the app icon
-(114x114) into assets/. Run from anywhere; needs Pillow."""
+"""Draws the action bar icons (white line art, 81x81) into assets/images.
+The app icon is drawn by hand (assets/icon/icon.svg). Run from anywhere;
+needs Pillow."""
 import math
 import os
 from PIL import Image, ImageDraw
@@ -218,23 +219,6 @@ def downloads_icon():
     save(img, "downloads.png")
 
 
-def app_icon():
-    size = 114 * S
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle([0, 0, size - 1, size - 1], radius=22 * S, fill=(38, 35, 64, 255))
-    berry = (122, 64, 196, 255)
-    hi = (178, 140, 235, 255)
-    for cx, cy in [(44, 50), (70, 50), (57, 72), (31, 72), (83, 72), (44, 94), (70, 94)]:
-        r = 13 * S
-        X, Y = cx * S, cy * S
-        d.ellipse([X - r, Y - r, X + r, Y + r], fill=berry)
-        r2 = 4 * S
-        d.ellipse([X - 6 * S - r2, Y - 6 * S - r2, X - 6 * S + r2, Y - 6 * S + r2], fill=hi)
-    d.polygon([(57 * S, 34 * S), (50 * S, 14 * S), (64 * S, 14 * S)], fill=(90, 190, 110, 255))
-    img.resize((114, 114), Image.LANCZOS).save(os.path.join(OUT, "..", "icon.png"))
-
-
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     arrow("back.png", False)
@@ -257,4 +241,3 @@ if __name__ == "__main__":
     downloads_icon()
     overflow_icon()
     lock_icon()
-    app_icon()

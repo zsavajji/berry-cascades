@@ -7,8 +7,14 @@
     <description>A Cascades web browser on Berry Browser's Chromium engine.</description>
     <author>zsavajji</author>
 
+    <!-- The home screen takes the closest size: 110 on a Q10, 96 on a Z30,
+         144 (icon.png) on a Passport. -->
     <icon>
-        <image>assets/icon.png</image>
+        <image>assets/icon/icon86.png</image>
+        <image>assets/icon/icon90.png</image>
+        <image>assets/icon/icon96.png</image>
+        <image>assets/icon/icon110.png</image>
+        <image>assets/icon/icon.png</image>
     </icon>
 
     <initialWindow>
@@ -47,7 +53,11 @@
         <invoke-target-type>application</invoke-target-type>
         <invoke-target-name>Berry Cascades</invoke-target-name>
         <icon>
-            <image>assets/icon.png</image>
+            <image>assets/icon/icon86.png</image>
+            <image>assets/icon/icon90.png</image>
+            <image>assets/icon/icon96.png</image>
+            <image>assets/icon/icon110.png</image>
+            <image>assets/icon/icon.png</image>
         </icon>
         <filter>
             <action>bb.action.OPEN</action>
