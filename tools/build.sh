@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds build/io.github.zsavajji.berrycascades.bar in a Docker image with
+# Builds build/chromeberry.bar in a Docker image with
 # the BlackBerry 10 Native SDK 10.3.1 (qcc, qmake, Cascades, the packager):
 # BB10_NDK_IMAGE, by default yamsergey/bb10-ndk:0.6 from Docker Hub.
 # Fetches the engine first unless engine/ is there (tools/fetch-engine.sh),

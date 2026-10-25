@@ -21,7 +21,7 @@ Container {
         }
         Label {
             horizontalAlignment: HorizontalAlignment.Center
-            text: browser.title != "" ? browser.title : "Berry Cascades"
+            text: browser.title != "" ? browser.title : "ChromeBerry"
             // Two lines at most, so the card holds the icon and address too.
             multiline: true
             autoSize.maxLineCount: 2

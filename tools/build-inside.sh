@@ -6,11 +6,11 @@ set -eu
 cd "$(dirname "$0")/.."
 
 mkdir -p build/app build/lib
-(cd build && qmake -spec blackberry-armv7le-qcc CONFIG+=device ../berrycascades.pro && make -j"$(nproc)")
+(cd build && qmake -spec blackberry-armv7le-qcc CONFIG+=device ../chromeberry.pro && make -j"$(nproc)")
 
 qcc -Vgcc_ntoarmv7le -O2 -Wall -shared -fPIC -o build/lib/libberryembed.so \
     shim/berry_embed.c -lscreen -lbps
 
-blackberry-nativepackager -package build/io.github.zsavajji.berrycascades.bar \
+blackberry-nativepackager -package build/chromeberry.bar \
     bar-descriptor.xml -configuration Device-Release
-echo "packaged: build/io.github.zsavajji.berrycascades.bar"
+echo "packaged: build/chromeberry.bar"

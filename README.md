@@ -1,13 +1,13 @@
-# Berry Cascades
+# ChromeBerry
 
-A web browser for BlackBerry 10 with a native Cascades interface in the style
+(Formerly Berry Cascades.) A web browser for BlackBerry 10 with a native Cascades interface in the style
 of the stock browser, on top of the Chromium engine that
 [chromium-for-bb10](https://github.com/zsavajji/chromium-for-bb10) ports to
 QNX (Berry Browser's `content_shell`, build 106: Chromium 120).
 
-Berry Browser draws its own toolbar with Skia inside the engine. Berry
-Cascades runs the same engine with that toolbar off and puts Cascades around
-it instead, laid out like the stock BlackBerry 10 browser: the page fills the
+Berry Browser draws its own toolbar with Skia inside the engine. ChromeBerry
+runs the same engine with that toolbar off and puts Cascades around it
+instead, laid out like the stock BlackBerry 10 browser: the page fills the
 screen, and one dark bar along the bottom holds Back, the address (with
 a padlock on https and Stop/Reload) and the ⋮ menu, with a thin blue line
 above it while a page loads. Scrolling down slides it away and leaves a
@@ -91,7 +91,7 @@ toolchain gap, and a milestone plan.
 ## How it works
 
 ```
- Berry Cascades (Cascades, Qt 4.8)          content_shell.exe (Chromium)
+ ChromeBerry (Cascades, Qt 4.8)             content_shell.exe (Chromium)
  ┌──────────────────────────────┐   spawn   ┌──────────────────────────┐
  │ main.qml: TextField, actions │ ────────► │ BERRY_APP_MODE=1 (no     │
  │ ForeignWindowControl ◄───────┼─ window ──│ Skia toolbar)            │
@@ -156,7 +156,7 @@ Docker Hub; set `BB10_NDK_IMAGE` to use another.
 
 ```sh
 tools/build.sh
-# -> build/io.github.zsavajji.berrycascades.bar
+# -> build/chromeberry.bar
 ```
 
 `tools/build.sh` first runs `tools/fetch-engine.sh`, which downloads Berry
@@ -176,7 +176,7 @@ is built with the SDK's own qmake spec.
 ## Installing
 
 The package is unsigned, like Berry Browser's: turn on Development Mode,
-then sideload `build/io.github.zsavajji.berrycascades.bar` with Sachesi or
+then sideload `build/chromeberry.bar` with Sachesi or
 DDPB. It installs next to Berry Browser.
 
 ## Status
@@ -201,11 +201,11 @@ only be confirmed on a phone:
   `Input.dispatchKeyEvent`, using Cascades' `KeyEvent.key` (sys/keycodes.h for
   special keys).
 
-The engine log is `/accounts/1000/shared/misc/berry-cascades-engine.log`
+The engine log is `/accounts/1000/shared/misc/chromeberry-engine.log`
 (the **misc** folder in File Manager), or `engine.log` in the app's data
 folder when the app has no shared-files access. Settings → Engine log shows
 its path and its last 24 KB, and can copy it. Besides the engine's output it
-has the app's own lines (`[berry-cascades …]`): each start with its size, port
+has the app's own lines (`[chromeberry …]`): each start with its size, port
 and flags, the DevTools connection, and the exit code if the engine stops.
 *Detailed engine log* adds Chromium's own logging.
 

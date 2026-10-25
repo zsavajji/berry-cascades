@@ -1,4 +1,4 @@
-# A WebKit engine for Berry Cascades
+# A WebKit engine for ChromeBerry
 
 Chromium (Berry Browser's `content_shell`) is a 96 MB binary that takes from a
 few seconds up to minutes to start on a Krait phone. This note looks at

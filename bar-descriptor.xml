@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no"?>
 <qnx xmlns="http://www.qnx.com/schemas/application/1.0">
-    <id>io.github.zsavajji.berrycascades</id>
-    <name>Berry Cascades</name>
+    <id>io.github.zsavajji.chromeberry</id>
+    <name>ChromeBerry</name>
     <versionNumber>0.4.0</versionNumber>
     <buildId>19</buildId>
     <description>A Cascades web browser on Berry Browser's Chromium engine.</description>
@@ -25,7 +25,7 @@
 
     <configuration name="Device-Release">
         <platformArchitecture>armle-v7</platformArchitecture>
-        <asset path="build/app/berrycascades" entry="true" type="Qnx/Elf">berrycascades</asset>
+        <asset path="build/app/chromeberry" entry="true" type="Qnx/Elf">chromeberry</asset>
         <!-- LD_PRELOADed into the engine: puts its window in this app's
              window group (shim/berry_embed.c). -->
         <asset path="build/lib/libberryembed.so" type="Qnx/Elf">lib/libberryembed.so</asset>
@@ -49,9 +49,9 @@
     <asset path="assets">assets</asset>
 
     <!-- Other apps can open http and https links here. -->
-    <invoke-target id="io.github.zsavajji.berrycascades">
+    <invoke-target id="io.github.zsavajji.chromeberry">
         <invoke-target-type>application</invoke-target-type>
-        <invoke-target-name>Berry Cascades</invoke-target-name>
+        <invoke-target-name>ChromeBerry</invoke-target-name>
         <icon>
             <image>assets/icon/icon86.png</image>
             <image>assets/icon/icon90.png</image>

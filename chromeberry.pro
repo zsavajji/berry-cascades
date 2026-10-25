@@ -1,7 +1,7 @@
 # A plain executable, as the entry point; cascades10.prf would make a
 # release build a shared library for the Cascades launcher instead.
 TEMPLATE = app
-TARGET = berrycascades
+TARGET = chromeberry
 CONFIG += qt warn_on release
 QT += declarative network
 QT -= gui

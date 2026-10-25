@@ -239,7 +239,7 @@ QString Browser::logPath() const
 {
     QFileInfo shared(kSharedMisc);
     if (shared.isDir() && shared.isWritable())
-        return QString(kSharedMisc) + "/berry-cascades-engine.log";
+        return QString(kSharedMisc) + "/chromeberry-engine.log";
     return QDir::homePath() + "/engine.log";
 }
 
@@ -248,7 +248,7 @@ void Browser::log(const QString &line) const
 {
     QFile file(logPath());
     if (file.open(QIODevice::WriteOnly | QIODevice::Append))
-        file.write(QString("[berry-cascades %1] %2\n")
+        file.write(QString("[chromeberry %1] %2\n")
                        .arg(QTime::currentTime().toString("hh:mm:ss"), line).toUtf8());
 }
 
