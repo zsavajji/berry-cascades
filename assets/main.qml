@@ -72,6 +72,11 @@ Page {
     // page's window in step.
     onBarsShownChanged: browser.showBars(webView, barsShown, titleIn, true)
     onTitleInChanged: browser.showBars(webView, barsShown, titleIn, true)
+    // The page comes back when the menu has gone, however it went.
+    onActionMenuVisualStateChanged: {
+        if (actionMenuVisualState == ActionMenuVisualState.Hidden)
+            page.closeMenu()
+    }
 
     keyListeners: [
         // Keys typed while no field of ours is focused go to the page.
@@ -195,6 +200,7 @@ Page {
                             onTapped: {
                                 page.typing = false
                                 address.loseFocus()
+                                page.closeMenu()
                             }
                         }
                     ]
@@ -677,210 +683,165 @@ Page {
                 }
             }
         }
-
-        // ---- the ⋮ menu and the long-press menu, sliding in from the right --
-        Container {
-            visible: page.menuOpen || page.dialogOpen
-            horizontalAlignment: HorizontalAlignment.Fill
-            verticalAlignment: VerticalAlignment.Fill
-            background: Color.create("#99000000")
-            gestureHandlers: [
-                TapHandler {
-                    onTapped: page.closeMenu()
-                }
-            ]
-        }
-        Container {
-            id: menu
-            visible: page.menuOpen
-            horizontalAlignment: HorizontalAlignment.Right
-            verticalAlignment: VerticalAlignment.Fill
-            // As wide as its longest row ("Add to bookmarks"), with some room.
-            preferredWidth: ui.du(44)
-            background: Color.create("#121212")
-            animations: [
-                TranslateTransition {
-                    id: menuSlide
-                    fromX: ui.du(44)
-                    toX: 0
-                    duration: 160
-                    easingCurve: StockCurve.CubicOut
-                }
-            ]
-            ScrollView {
-                horizontalAlignment: HorizontalAlignment.Fill
-                Container {
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    topPadding: ui.du(1)
-                    MenuRow {
-                        title: qsTr("Forward")
-                        imageSource: "asset:///images/forward.png"
-                        enabled: browser.canGoForward
-                        onTriggered: page.menuDo(function () { browser.forward() })
-                    }
-                    MenuRow {
-                        title: qsTr("Home")
-                        imageSource: "asset:///images/home.png"
-                        onTriggered: page.menuDo(function () { browser.home() })
-                    }
-                    MenuRow {
-                        title: qsTr("Add to bookmarks")
-                        imageSource: "asset:///images/bookmark_add.png"
-                        enabled: !browser.bookmarked && !page.startPage
-                        onTriggered: page.menuDo(function () { browser.addBookmark() })
-                    }
-                    MenuRow {
-                        title: qsTr("Bookmarks")
-                        imageSource: "asset:///images/bookmarks.png"
-                        onTriggered: page.menuDo(function () { bookmarksSheet.open() })
-                    }
-                    MenuRow {
-                        title: qsTr("History")
-                        imageSource: "asset:///images/history.png"
-                        onTriggered: page.menuDo(function () { historySheet.open() })
-                    }
-                    MenuRow {
-                        title: qsTr("Find in page")
-                        imageSource: "asset:///images/search.png"
-                        onTriggered: page.menuDo(function () {
-                            page.finding = true
-                            findField.requestFocus()
-                        })
-                    }
-                    MenuRow {
-                        title: qsTr("Select text")
-                        imageSource: "asset:///images/selectall.png"
-                        onTriggered: page.menuDo(function () { browser.selectAll() })
-                    }
-                    MenuRow {
-                        title: qsTr("Paste")
-                        imageSource: "asset:///images/paste.png"
-                        visible: browser.editing
-                        onTriggered: page.menuDo(function () { browser.paste() })
-                    }
-                    MenuRow {
-                        title: qsTr("Share")
-                        imageSource: "asset:///images/share.png"
-                        onTriggered: page.menuDo(function () { page.share(browser.url) })
-                    }
-                    MenuRow {
-                        title: qsTr("Copy link")
-                        imageSource: "asset:///images/copy.png"
-                        onTriggered: page.menuDo(function () { browser.copyUrl() })
-                    }
-                    MenuRow {
-                        title: qsTr("Downloads")
-                        imageSource: "asset:///images/downloads.png"
-                        onTriggered: page.menuDo(function () { downloadsSheet.open() })
-                    }
-                    MenuRow {
-                        title: qsTr("Settings")
-                        imageSource: "asset:///images/settings.png"
-                        onTriggered: page.menuDo(function () { settingsSheet.open() })
-                    }
-                    MenuRow {
-                        title: qsTr("Restart engine")
-                        imageSource: "asset:///images/restart.png"
-                        onTriggered: page.menuDo(function () { browser.restartEngine() })
-                    }
-                }
-            }
-        }
-        // The long-press menu on a link or an image: the address, then what
-        // applies to it.
-        Container {
-            visible: page.dialogOpen
-            horizontalAlignment: HorizontalAlignment.Right
-            verticalAlignment: VerticalAlignment.Fill
-            preferredWidth: ui.du(44)
-            background: Color.create("#121212")
-            animations: [
-                TranslateTransition {
-                    id: pressMenuSlide
-                    fromX: ui.du(44)
-                    toX: 0
-                    duration: 160
-                    easingCurve: StockCurve.CubicOut
-                }
-            ]
-            Container {
-                horizontalAlignment: HorizontalAlignment.Fill
-                topPadding: ui.du(2)
-                bottomPadding: ui.du(1)
-                leftPadding: ui.du(2.2)
-                rightPadding: ui.du(2.2)
-                Label {
-                    text: page.displayUrl(page.menuLink != "" ? page.menuLink : page.menuImage)
-                    textStyle.color: Color.create("#9a9a9a")
-                    textStyle.base: SystemDefaults.TextStyles.SubtitleText
-                }
-            }
-            ScrollView {
-                horizontalAlignment: HorizontalAlignment.Fill
-                Container {
-                    horizontalAlignment: HorizontalAlignment.Fill
-                    MenuRow {
-                        verticalPadding: ui.du(2.6)
-                        title: qsTr("Open")
-                        imageSource: "asset:///images/forward.png"
-                        visible: page.menuLink != ""
-                        onTriggered: page.menuDo(function () { browser.open(page.menuLink) })
-                    }
-                    MenuRow {
-                        verticalPadding: ui.du(2.6)
-                        title: qsTr("Copy link")
-                        imageSource: "asset:///images/copy.png"
-                        visible: page.menuLink != ""
-                        onTriggered: page.menuDo(function () { browser.copyText(page.menuLink) })
-                    }
-                    MenuRow {
-                        verticalPadding: ui.du(2.6)
-                        title: qsTr("Share link")
-                        imageSource: "asset:///images/share.png"
-                        visible: page.menuLink != ""
-                        onTriggered: page.menuDo(function () { page.share(page.menuLink) })
-                    }
-                    MenuRow {
-                        verticalPadding: ui.du(2.6)
-                        title: qsTr("Copy link text")
-                        imageSource: "asset:///images/copy.png"
-                        visible: page.menuLink != "" && page.menuText != ""
-                        onTriggered: page.menuDo(function () { browser.copyText(page.menuText) })
-                    }
-                    MenuRow {
-                        verticalPadding: ui.du(2.6)
-                        title: qsTr("Open image")
-                        imageSource: "asset:///images/forward.png"
-                        visible: page.menuImage != ""
-                        onTriggered: page.menuDo(function () { browser.open(page.menuImage) })
-                    }
-                    MenuRow {
-                        verticalPadding: ui.du(2.6)
-                        title: qsTr("Save image")
-                        imageSource: "asset:///images/downloads.png"
-                        visible: page.menuImage != ""
-                        onTriggered: page.menuDo(function () { downloads.save(page.menuImage) })
-                    }
-                    MenuRow {
-                        verticalPadding: ui.du(2.6)
-                        title: qsTr("Copy image address")
-                        imageSource: "asset:///images/copy.png"
-                        visible: page.menuImage != ""
-                        onTriggered: page.menuDo(function () { browser.copyText(page.menuImage) })
-                    }
-                    MenuRow {
-                        verticalPadding: ui.du(2.6)
-                        title: qsTr("Share image address")
-                        imageSource: "asset:///images/share.png"
-                        visible: page.menuImage != "" && page.menuLink == ""
-                        onTriggered: page.menuDo(function () { page.share(page.menuImage) })
-                    }
-                }
-            }
-        }
     }
 
     attachedObjects: [
+        // The ⋮ menu's actions (openMenu) and the long-press menu's (showMenu).
+        // Their keys work while their menu is open, where the menu shows them:
+        // on the page a key the page's text box should have got (one the page
+        // script did not report focused) would go Home instead.
+        ActionItem {
+            id: actForward
+            shortcuts: Shortcut { key: "N" }
+            title: qsTr("Forward")
+            imageSource: "asset:///images/forward.png"
+            enabled: browser.canGoForward
+            onTriggered: browser.forward()
+        },
+        ActionItem {
+            id: actHome
+            shortcuts: Shortcut { key: "H" }
+            title: qsTr("Home")
+            imageSource: "asset:///images/home.png"
+            onTriggered: browser.home()
+        },
+        ActionItem {
+            id: actAddBookmark
+            shortcuts: Shortcut { key: "A" }
+            title: qsTr("Add to bookmarks")
+            imageSource: "asset:///images/bookmark_add.png"
+            enabled: !browser.bookmarked && !page.startPage
+            onTriggered: browser.addBookmark()
+        },
+        ActionItem {
+            id: actBookmarks
+            shortcuts: Shortcut { key: "K" }
+            title: qsTr("Bookmarks")
+            imageSource: "asset:///images/bookmarks.png"
+            onTriggered: bookmarksSheet.open()
+        },
+        ActionItem {
+            id: actHistory
+            shortcuts: Shortcut { key: "Y" }
+            title: qsTr("History")
+            imageSource: "asset:///images/history.png"
+            onTriggered: historySheet.open()
+        },
+        ActionItem {
+            id: actFind
+            shortcuts: Shortcut { key: "F" }
+            title: qsTr("Find in page")
+            imageSource: "asset:///images/search.png"
+            onTriggered: {
+                page.finding = true
+                findField.requestFocus()
+            }
+        },
+        ActionItem {
+            id: actSelect
+            shortcuts: Shortcut { key: "L" }
+            title: qsTr("Select text")
+            imageSource: "asset:///images/selectall.png"
+            onTriggered: browser.selectAll()
+        },
+        ActionItem {
+            id: actPaste
+            shortcuts: Shortcut { key: "V" }
+            title: qsTr("Paste")
+            imageSource: "asset:///images/paste.png"
+            onTriggered: browser.paste()
+        },
+        ActionItem {
+            id: actShare
+            shortcuts: Shortcut { key: "S" }
+            title: qsTr("Share")
+            imageSource: "asset:///images/share.png"
+            onTriggered: page.share(browser.url)
+        },
+        ActionItem {
+            id: actCopyUrl
+            shortcuts: Shortcut { key: "C" }
+            title: qsTr("Copy link")
+            imageSource: "asset:///images/copy.png"
+            onTriggered: browser.copyUrl()
+        },
+        ActionItem {
+            id: actDownloads
+            shortcuts: Shortcut { key: "D" }
+            title: qsTr("Downloads")
+            imageSource: "asset:///images/downloads.png"
+            onTriggered: downloadsSheet.open()
+        },
+        ActionItem {
+            id: actSettings
+            shortcuts: Shortcut { key: "E" }
+            title: qsTr("Settings")
+            imageSource: "asset:///images/settings.png"
+            onTriggered: settingsSheet.open()
+        },
+        ActionItem {
+            id: actRestart
+            shortcuts: Shortcut { key: "R" }
+            title: qsTr("Restart engine")
+            imageSource: "asset:///images/restart.png"
+            onTriggered: browser.restartEngine()
+        },
+        ActionItem {
+            id: actOpenLink
+            shortcuts: Shortcut { key: "O" }
+            title: qsTr("Open")
+            imageSource: "asset:///images/forward.png"
+            onTriggered: browser.open(page.menuLink)
+        },
+        ActionItem {
+            id: actCopyLink
+            shortcuts: Shortcut { key: "C" }
+            title: qsTr("Copy link")
+            imageSource: "asset:///images/copy.png"
+            onTriggered: browser.copyText(page.menuLink)
+        },
+        ActionItem {
+            id: actShareLink
+            shortcuts: Shortcut { key: "S" }
+            title: qsTr("Share link")
+            imageSource: "asset:///images/share.png"
+            onTriggered: page.share(page.menuLink)
+        },
+        ActionItem {
+            id: actCopyLinkText
+            shortcuts: Shortcut { key: "T" }
+            title: qsTr("Copy link text")
+            imageSource: "asset:///images/copy.png"
+            onTriggered: browser.copyText(page.menuText)
+        },
+        ActionItem {
+            id: actOpenImage
+            shortcuts: Shortcut { key: "I" }
+            title: qsTr("Open image")
+            imageSource: "asset:///images/forward.png"
+            onTriggered: browser.open(page.menuImage)
+        },
+        ActionItem {
+            id: actSaveImage
+            shortcuts: Shortcut { key: "D" }
+            title: qsTr("Save image")
+            imageSource: "asset:///images/downloads.png"
+            onTriggered: downloads.save(page.menuImage)
+        },
+        ActionItem {
+            id: actCopyImage
+            shortcuts: Shortcut { key: "A" }
+            title: qsTr("Copy image address")
+            imageSource: "asset:///images/copy.png"
+            onTriggered: browser.copyText(page.menuImage)
+        },
+        ActionItem {
+            id: actShareImage
+            shortcuts: Shortcut { key: "S" }
+            title: qsTr("Share image address")
+            imageSource: "asset:///images/share.png"
+            onTriggered: page.share(page.menuImage)
+        },
         Sheet {
             id: bookmarksSheet
             onOpened: bookmarksPage.show()
@@ -912,6 +873,15 @@ Page {
             id: settingsSheet
             content: SettingsPage {
                 onDone: settingsSheet.close()
+            }
+        },
+        Timer {
+            id: menuTimer
+            singleShot: true
+            interval: 150  // a guess at how long the menu takes in new actions
+            onTimeout: {
+                if (page.menuOpen || page.dialogOpen)
+                    page.openActionMenu()
             }
         },
         Timer {
@@ -950,21 +920,34 @@ Page {
         return url.replace(/^[a-z]+:\/\//, "").replace(/^www\./, "")
     }
 
-    // The menu and the long-press dialog open over a snapshot of the page,
-    // taken first, since the engine window has to be hidden under them.
+    // The ⋮ menu and the long-press menu are the system's action menu, each
+    // with its own actions. It is drawn under the engine's window, so it opens
+    // over a snapshot of the page, taken first.
     function openMenu() {
         page.pending = "menu"
         browser.snapshot()
     }
 
+    // Changing the actions as the menu opens slides its rows in from the top,
+    // so a new set opens a moment after it is put in.
+    function openActions(actions) {
+        var same = page.actionCount() == actions.length
+        for (var i = 0; same && i < actions.length; ++i)
+            same = page.actionAt(i) == actions[i]
+        if (same) {
+            page.openActionMenu()
+            return
+        }
+        while (page.actionCount() > 0)
+            page.removeAction(page.actionAt(0))
+        for (var j = 0; j < actions.length; ++j)
+            page.addAction(actions[j], ActionBarPlacement.InOverflow)
+        menuTimer.start()
+    }
+
     function closeMenu() {
         page.menuOpen = false
         page.dialogOpen = false
-    }
-
-    function menuDo(action) {
-        page.closeMenu()
-        action()
     }
 
     function share(text) {
@@ -1107,10 +1090,19 @@ Page {
             page.snapshotShown = ok
             if (page.pending == "menu") {
                 page.menuOpen = true
-                menuSlide.play()
+                page.openActions([actForward, actHome, actAddBookmark, actBookmarks, actHistory,
+                                  actFind, actSelect].concat(browser.editing ? [actPaste] : [],
+                                  [actShare, actCopyUrl, actDownloads, actSettings, actRestart]))
             } else if (page.pending == "dialog") {
                 page.dialogOpen = true
-                pressMenuSlide.play()
+                var actions = []
+                if (page.menuLink != "")
+                    actions = actions.concat([actOpenLink, actCopyLink, actShareLink],
+                                             page.menuText != "" ? [actCopyLinkText] : [])
+                if (page.menuImage != "")
+                    actions = actions.concat([actOpenImage, actSaveImage, actCopyImage],
+                                             page.menuLink == "" ? [actShareImage] : [])
+                page.openActions(actions)
             } else if (page.pending == "edit") {
                 page.editCovered = address.focused && ok
             }

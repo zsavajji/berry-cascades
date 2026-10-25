@@ -23,14 +23,15 @@ bar and Cascades clips it where the bars lie over it.
   engine, then matching bookmarks and history.
 - **Search**: DuckDuckGo by default; also DuckDuckGo Lite (the html/ page,
   which works with JavaScript off), Google, Bing and Wikipedia.
-- **⋮ menu**, sliding in from the right: Forward, Home, Add to
+- **⋮ menu**, the system's action menu: Forward, Home, Add to
   bookmarks, Bookmarks, History, Find in page, Select text, Paste, Share,
   Copy link, Downloads, Settings, Restart engine.
 - **History**: every page visited, newest first, searchable; hold to delete
   one, or clear it all.
-- **Long press** on a link or an image: a panel slides in from the right
-  with what applies (Open, Copy link, Share link, Copy link text; Open
-  image, Save image, Copy image address), the address at its top.
+- **Long press** on a link or an image: the system's action menu with what
+  applies (Open, Copy link, Share link, Copy link text; Open image, Save
+  image, Copy image address). In both menus each row shows a key that picks
+  it while the menu is open.
 - **Text selection**: hold on text to select a word, then drag the handles.
   The bottom bar then copies it, searches for it, shares it, selects all, or
   ends the selection. A tap on the page ends it too. The page script draws
