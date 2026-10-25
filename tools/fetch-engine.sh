@@ -3,7 +3,7 @@
 # content_shell.exe, its data files and the runtime libraries it ships with.
 # Berry Browser's packages are the releases of
 # https://github.com/sw7ft/berry-browser (build 84 is also in
-# releases/ of https://github.com/zsavajji/chromium-for-bb10).
+# releases/ of https://github.com/sw7ft/chromium-for-bb10).
 #
 #   tools/fetch-engine.sh path/to/BerryBrowserV3-3.0.2-build84.bar
 #

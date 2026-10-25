@@ -2,7 +2,7 @@
 
 (Formerly Berry Cascades.) A web browser for BlackBerry 10 with a native Cascades interface in the style
 of the stock browser, on top of the Chromium engine that
-[chromium-for-bb10](https://github.com/zsavajji/chromium-for-bb10) ports to
+[chromium-for-bb10](https://github.com/sw7ft/chromium-for-bb10) ports to
 QNX (Berry Browser's `content_shell`, build 106: Chromium 120).
 
 Berry Browser draws its own toolbar with Skia inside the engine. ChromeBerry
@@ -161,9 +161,8 @@ This repository is the app; the engine comes from elsewhere:
   [sw7ft/berry-browser](https://github.com/sw7ft/berry-browser) (build 106),
   fetched and checked by `tools/fetch-engine.sh`.
 - **The port**: Chromium for QNX/BB10, sw7ft's
-  [chromium-for-bb10](https://github.com/sw7ft/chromium-for-bb10) and its fork
-  [zsavajji/chromium-for-bb10](https://github.com/zsavajji/chromium-for-bb10),
-  whose `berry-cascades` branch this repository's history comes from.
+  [chromium-for-bb10](https://github.com/sw7ft/chromium-for-bb10). This
+  repository's history began as a branch of a fork of it.
 
 The app talks to the engine only through command-line flags, environment
 variables (`QNX_DEVTOOLS`, `QNX_SCREEN_*`, `BERRY_*`), the DevTools protocol
