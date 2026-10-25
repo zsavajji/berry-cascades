@@ -35,6 +35,13 @@ bar and Cascades clips it where the bars lie over it.
   (as it does Berry Browser), so the script blocks it.
 - **Active Frame**: minimized, the browser shows the page's favicon, title
   and address.
+- **Ad and tracker blocking**: the engine's own short list (its switch is
+  shared with Berry Browser) and the domains of EasyList and EasyPrivacy,
+  about 100,000, taken when the app is built (`tools/fetch-blocklist.py`).
+  content_shell takes no proxy settings (no `--proxy-pac-url`), so the
+  engine holds each request (DevTools `Fetch`) until the app has checked its
+  host and failed it or let it go. Only rules for whole domains apply, and a
+  page itself is never blocked, only what it loads.
 - **Find in page**, with the number of matches and previous/next.
 - **Paste** into the page's focused field (a button appears in the bar
   while one is focused), and the hardware keyboard types into the page.
@@ -216,6 +223,16 @@ and flags, the DevTools connection, and the exit code if the engine stops.
   browser runs. Berry Browser's launcher leaves it off because it marks the
   browser as automated (`navigator.webdriver`); the engine's own page script
   forces that back to false.
+- **Blocklist round trip.** Each request waits for the app's answer over
+  DevTools, a few milliseconds while the app is responsive. With blocking off
+  in Settings, requests go straight out.
 - **Size changes.** The engine cannot resize its window, so a new web view
   size (e.g. the action bar's) applies at the next engine restart.
   The keyboard covers the page instead of shrinking it.
+
+## Licences
+
+The `.bar` carries `blocklist.txt`, made from
+[EasyList and EasyPrivacy](https://easylist.to) by The EasyList authors, dual
+licensed under the GNU GPL v3 and CC BY-SA 3.0. It is generated when the app
+is built and is not part of this repository.

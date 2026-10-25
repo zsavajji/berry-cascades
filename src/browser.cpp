@@ -550,6 +550,19 @@ void Browser::attached()
     setEngineState("running");
     m_probe.start(kWatchMs);
     m_devtools->call("Page.enable");
+    // With Berry's own blocker (on unless misc/berry-adblock.disable), the
+    // EasyList and EasyPrivacy domains: content_shell takes no proxy script,
+    // so the engine holds each request until protocolEvent() lets it go.
+    if (setting("adblock").toBool()) {
+        if (m_blocklist.isEmpty()) {
+            QFile file(QCoreApplication::applicationDirPath() + "/blocklist.txt");
+            if (file.open(QIODevice::ReadOnly))
+                m_blocklist = file.readAll().split('\n').toSet();
+            log(QString("content blocklist: %1 domains").arg(m_blocklist.size()));
+        }
+        if (!m_blocklist.isEmpty())
+            m_devtools->call("Fetch.enable");
+    }
     QVariantMap binding;
     binding["name"] = QString(kBinding);
     m_devtools->call("Runtime.addBinding", binding);
@@ -657,7 +670,27 @@ void Browser::protocolEvent(const QString &method, const QVariantMap &params)
 {
     const QString frameId = params.value("frameId").toString();
     const bool mainFrame = m_mainFrameId.isEmpty() || frameId == m_mainFrameId;
-    if (method == "Page.frameStartedLoading") {
+    if (method == "Fetch.requestPaused") {
+        // A domain on the content blocklist, or under one; not pages themselves.
+        QVariantMap reply;
+        reply["requestId"] = params.value("requestId");
+        const QString host = QUrl(params.value("request").toMap().value("url").toString()).host();
+        QByteArray name = host.toLatin1();
+        bool blocked = false;
+        if (params.value("resourceType").toString() != "Document") {
+            while (!blocked && name.contains('.')) {
+                blocked = m_blocklist.contains(name);
+                name = name.mid(name.indexOf('.') + 1);
+            }
+        }
+        if (blocked) {
+            log("blocked " + host);
+            reply["errorReason"] = QString("BlockedByClient");
+            m_devtools->call("Fetch.failRequest", reply);
+        } else {
+            m_devtools->call("Fetch.continueRequest", reply);
+        }
+    } else if (method == "Page.frameStartedLoading") {
         if (mainFrame)
             setLoading(true);
     } else if (method == "Page.frameStoppedLoading") {

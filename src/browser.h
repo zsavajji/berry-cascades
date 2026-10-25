@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QProcess>
+#include <QSet>
 #include <QSettings>
 #include <QStringList>
 #include <QTimer>
@@ -244,6 +245,9 @@ private:
     double m_barsIn, m_titleIn, m_barsFrom, m_titleFrom, m_barsTo, m_titleTo;
     QElapsedTimer m_barsClock;
     QTimer m_barsTimer;
+
+    // The content blocklist's domains (blocklist.txt, tools/fetch-blocklist.py).
+    QSet<QByteArray> m_blocklist;
     QString m_icon;
     int m_iconCount;
 };

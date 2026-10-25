@@ -38,6 +38,8 @@
     <asset path="engine/icudtl.dat">engine/icudtl.dat</asset>
     <asset path="engine/snapshot_blob.bin">engine/snapshot_blob.bin</asset>
     <asset path="engine/root_store.certs">engine/root_store.certs</asset>
+    <!-- EasyList and EasyPrivacy's domains (tools/fetch-blocklist.py). -->
+    <asset path="build/blocklist.txt">blocklist.txt</asset>
     <asset path="assets">assets</asset>
 
     <!-- Other apps can open http and https links here. -->

@@ -108,7 +108,7 @@ Page {
                 onCheckedChanged: browser.setSetting("adblock", checked)
             }
             Label {
-                text: qsTr("Less script to run on most sites. Shared with Berry Browser, which uses the same engine.")
+                text: qsTr("Less script to run on most sites: the engine's own list, shared with Berry Browser, and the domains of EasyList and EasyPrivacy (as of this build).")
                 multiline: true
                 textStyle.base: SystemDefaults.TextStyles.SubtitleText
             }
