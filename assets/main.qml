@@ -13,7 +13,10 @@ import chromeberry 1.0
 // address suggestions, the text magnifier while the address is edited). A
 // snapshot of the page stands in for it under the menu, dialogs and the
 // address. A system toast would be covered too, so messages show in the
-// title strip.
+// title strip. The page's window never takes the keyboard (shim): keys come
+// here, and while a text box in the page has the focus they go through an
+// unseen field of ours (pageInput), so the phone's keyboard works as in any
+// field of its own.
 Page {
     id: page
     actionBarVisibility: ChromeVisibility.Hidden
@@ -71,14 +74,15 @@ Page {
     onTitleInChanged: browser.showBars(webView, barsShown, titleIn, true)
 
     keyListeners: [
-        // Keys typed while no Cascades field is focused go to the page.
+        // Keys typed while no field of ours is focused go to the page.
         KeyListener {
             onKeyPressed: {
                 // The Enter that pressed Go arrives once the address has let go of the focus.
                 if (event.key == 13 && Date.now() - page.submitTime < 1000)
                     return
-                if (!address.focused && !findField.focused && browser.engineState == "running")
-                    browser.sendKey(event.key)
+                if (!address.focused && !findField.focused && !pageInput.focused
+                        && browser.engineState == "running")
+                    page.pageKey(event, false)
             }
         }
     ]
@@ -106,6 +110,45 @@ Page {
                 layout: DockLayout {}
                 layoutProperties: StackLayoutProperties {
                     spaceQuota: 1
+                }
+
+                // The keys for a text box in the page: in a field of ours the
+                // phone does all its keyboard does (tapped and held Alt and Shift
+                // with their indicator, the symbol key, a held key's accents).
+                // What it types goes to the page at once and the field is
+                // emptied (as term51's). Unseen under everything else here, the
+                // page's window included, but not transparent: the phone opens
+                // no symbol picker for a field it takes for invisible.
+                TextField {
+                    id: pageInput
+                    backgroundVisible: false
+                    // Only syncPageInput gives it the focus, never a touch or a key.
+                    focusPolicy: FocusPolicy.None
+                    navigation.focusPolicy: NavigationFocusPolicy.NotFocusable
+                    // Kept unless another field takes it: the bars' buttons leave it.
+                    focusRetentionPolicyFlags: FocusRetentionPolicy.LoseToFocusable
+                    verticalAlignment: VerticalAlignment.Bottom
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    inputMode: TextFieldInputMode.Text
+                    input {
+                        flags: TextInputFlag.AutoCapitalizationOff | TextInputFlag.AutoCorrectionOff
+                               | TextInputFlag.PredictionOff | TextInputFlag.SpellCheckOff
+                               | TextInputFlag.WordSubstitutionOff | TextInputFlag.AutoPeriodOff
+                        submitKey: SubmitKey.EnterKey
+                        submitKeyFocusBehavior: SubmitKeyFocusBehavior.Keep
+                        onSubmitted: browser.sendKey(13)
+                    }
+                    onTextChanging: {
+                        if (text.length > 0) {
+                            browser.typeText(text)
+                            pageInput.text = ""
+                        }
+                    }
+                    keyListeners: [
+                        KeyListener {
+                            onKeyPressed: page.pageKey(event, true)
+                        }
+                    ]
                 }
 
                 // Seen while the engine starts or after it stops.
@@ -446,6 +489,7 @@ Page {
                                         page.editCovered = false
                                         if (!page.typing)
                                             address.text = page.displayUrl(browser.url)
+                                        page.syncPageInput()
                                     }
                                 }
                                 onTextChanging: {
@@ -588,6 +632,10 @@ Page {
                             input {
                                 submitKey: SubmitKey.Search
                                 onSubmitted: browser.find(findField.text, false)
+                            }
+                            onFocusedChanged: {
+                                if (!focused)
+                                    page.syncPageInput()
                             }
                             onTextChanging: {
                                 browser.stopFind()
@@ -934,6 +982,32 @@ Page {
         return text
     }
 
+    // A key for the page. The Q10 may cut a key's code to its low byte
+    // (Shift 0xF0E1 as á, Alt 0xF0E9 as é, Delete 0xF0FF as ÿ): such a key
+    // has a code for its cap, or is a modifier's byte with no cap of its own.
+    // In pageInput (inField) the field types the characters itself and Enter
+    // is its submitKey; the other keys (Backspace, Delete, Tab, Escape) go on.
+    function pageKey(event, inField) {
+        var k = event.key
+        var c = event.keycap
+        if (c >= 0xE000 && k >= 0x80 && k < 0x100
+                || (c == k || c == 0) && (k == 0xE1 || k == 0xE2 || k == 0xE3 || k == 0xE4 || k == 0xE9 || k == 0xEA))
+            k += 0xF000
+        if (inField && (k == 13 || k == 10 || k == 0xF00D || k >= 0x20 && k != 0x7F && k < 0xE000))
+            return
+        browser.sendKey(k)
+    }
+
+    // pageInput has the keyboard while a text box in the page has the focus
+    // and no field of ours is in use.
+    function syncPageInput() {
+        if (browser.editing && !address.focused && !findField.focused
+                && browser.engineState == "running")
+            pageInput.requestFocus()
+        else if (pageInput.focused)
+            pageInput.loseFocus()
+    }
+
     function fillSuggestions(text) {
         suggestionModel.clear()
         if (text.length == 0)
@@ -978,6 +1052,7 @@ Page {
         }
         browser.message.connect(notify)
         downloads.message.connect(notify)
+        browser.editingChanged.connect(page.syncPageInput)
         browser.pageTouched.connect(function () {
             page.typing = false
             address.loseFocus()

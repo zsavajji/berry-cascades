@@ -1203,6 +1203,15 @@ void Browser::keyEvent(const QString &type, const QVariantMap &fields)
     m_devtools->call("Input.dispatchKeyEvent", params);
 }
 
+void Browser::typeText(const QString &text)
+{
+    if (!m_devtools->isAttached())
+        return;
+    QVariantMap params;
+    params["text"] = text;
+    m_devtools->call("Input.insertText", params);
+}
+
 void Browser::sendKey(int key)
 {
     if (!m_devtools->isAttached())

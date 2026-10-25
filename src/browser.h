@@ -99,8 +99,11 @@ public:
     // Bookmarks, then history, matching what is typed in the address bar.
     Q_INVOKABLE QVariantList suggest(const QString &text) const;
 
-    // A key the page should get: Cascades' KeyEvent.key.
+    // A key the page should get: Cascades' KeyEvent.key, or the key code
+    // for one the Q10 cut to its low byte.
     Q_INVOKABLE void sendKey(int key);
+    // Text typed into the page's focused text box.
+    Q_INVOKABLE void typeText(const QString &text);
     // Clipboard text into the focused field of the page.
     Q_INVOKABLE void paste();
 

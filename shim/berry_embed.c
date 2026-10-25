@@ -11,7 +11,7 @@
  *
  *   screen_create_window         -> screen_create_window_type(CHILD)
  *   screen_create_window_group   -> set ID_STRING, screen_join_window_group
- *   screen_set_window_property_* -> keep our ID_STRING and rotation
+ *   screen_set_window_property_* -> keep our ID_STRING, rotation, sensitivity
  *   screen_set_group_property_pv -> keyboard FOCUS stays with Cascades
  *   navigator_request_events     -> the Cascades process owns the Navigator
  *   screen_get_event_property_iv -> touch positions relative to the window
@@ -35,6 +35,12 @@
 #include <screen/screen.h>
 
 static screen_window_t g_window;
+
+/* Touches, but never the keyboard: Screen gives it to the window last
+ * touched, so a tap in the page took it from Cascades, and keys reached the
+ * engine raw (the Q10's Shift and Alt as á and é, no tapped Alt or Shift).
+ * Keys reach the page through Cascades and DevTools instead. */
+static const int kSensitivity = SCREEN_SENSITIVITY_NO_FOCUS;
 
 static const char* env(const char* name) {
   const char* v = getenv(name);
@@ -101,6 +107,7 @@ int screen_create_window_group(screen_window_t win, const char* name) {
   set_id_string(win);
   int rc = screen_join_window_group(win, env("BERRY_EMBED_GROUP"));
   trace("joined window group %s rc=%d", env("BERRY_EMBED_GROUP"), rc);
+  screen_set_window_property_iv(win, SCREEN_PROPERTY_SENSITIVITY, &kSensitivity);
   return rc;
 }
 
@@ -126,6 +133,8 @@ int screen_set_window_property_iv(screen_window_t win, int pname,
     int rotation = atoi(env("BERRY_EMBED_ROTATION"));
     return real(win, pname, &rotation);
   }
+  if (embedding() && win == g_window && pname == SCREEN_PROPERTY_SENSITIVITY)
+    return real(win, pname, &kSensitivity);
   return real(win, pname, value);
 }
 
