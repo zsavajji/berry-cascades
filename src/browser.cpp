@@ -11,13 +11,17 @@
 
 #include <bb/cascades/Application>
 #include <bb/cascades/ForeignWindowControl>
+#include <bb/cascades/Image>
 #include <bb/cascades/Window>
 #include <bb/data/JsonDataAccess>
 #include <bb/system/Clipboard>
 #include <bb/system/InvokeManager>
 #include <bb/system/InvokeRequest>
 
+#include <bb/ImageData>
 #include <bb/UIToolkitSupport>
+#include <bb/utility/ImageConverter>
+#include <errno.h>
 #include <screen/screen.h>
 
 #include "downloads.h"
@@ -116,8 +120,6 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     , m_editing(false)
     , m_progress(0)
     , m_snapshotId(-1)
-    , m_snapshotCount(0)
-    , m_iconCount(0)
     , m_titleHeight(0)
     , m_slimHeight(0)
     , m_fullHeight(0)
@@ -127,6 +129,7 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     , m_titleFrom(0)
     , m_barsTo(1)
     , m_titleTo(0)
+    , m_iconCount(0)
 {
     QFile script(QCoreApplication::applicationDirPath() + "/assets/page.js");
     if (script.open(QIODevice::ReadOnly))
@@ -653,15 +656,8 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
             return;
         m_snapshotId = -1;
         m_snapshotTimer.stop();
-        const QString old = QDir::homePath() + QString("/snapshot-%1.jpg").arg(m_snapshotCount);
-        const QString path = QDir::homePath() + QString("/snapshot-%1.jpg").arg(++m_snapshotCount);
-        QFile::remove(old);
-        QFile file(path);
-        const QByteArray jpeg = QByteArray::fromBase64(result.value("data").toByteArray());
-        if (!jpeg.isEmpty() && file.open(QIODevice::WriteOnly) && file.write(jpeg) == jpeg.size())
-            emit snapshotReady(QUrl::fromLocalFile(path).toString());
-        else
-            emit snapshotReady(QString());
+        emit snapshotReady(setSnapshot(bb::utility::ImageConverter::decode(
+            QByteArray::fromBase64(result.value("data").toByteArray()), bb::PixelFormat::RGBX)));
     } else if (method == "Page.getFrameTree") {
         m_mainFrameId = result.value("frameTree").toMap().value("frame").toMap().value("id").toString();
     } else if (method == "Page.getNavigationHistory") {
@@ -828,8 +824,14 @@ void Browser::setProgress(double progress)
     emit progressChanged();
 }
 
+// Read from the page's window: the engine's own screenshot waits for its main
+// thread, which stalls for seconds on heavy pages.
 void Browser::snapshot()
 {
+    if (grabPage()) {
+        emit snapshotReady(true);
+        return;
+    }
     if (m_snapshotId >= 0)
         return;
     QVariantMap params;
@@ -837,7 +839,7 @@ void Browser::snapshot()
     params["quality"] = 55;
     m_snapshotId = m_devtools->call("Page.captureScreenshot", params);
     if (m_snapshotId < 0)
-        emit snapshotReady(QString());
+        emit snapshotReady(false);
     else
         m_snapshotTimer.start();
 }
@@ -845,7 +847,64 @@ void Browser::snapshot()
 void Browser::snapshotTimedOut()
 {
     m_snapshotId = -1;
-    emit snapshotReady(QString());
+    log("the engine's screenshot is late");
+    emit snapshotReady(false);
+}
+
+bool Browser::grabPage()
+{
+    bb::cascades::ForeignWindowControl *control = qobject_cast<bb::cascades::ForeignWindowControl *>(m_pageView);
+    screen_window_t window = control ? control->windowHandle() : 0;
+    screen_context_t context = 0;
+    int size[2] = {0, 0};
+    if (!window || screen_get_window_property_pv(window, SCREEN_PROPERTY_CONTEXT, (void **)&context) != 0
+        || !context || screen_get_window_property_iv(window, SCREEN_PROPERTY_SIZE, size) != 0
+        || size[0] <= 0 || size[1] <= 0)
+        return false;
+    screen_pixmap_t pixmap = 0;
+    if (screen_create_pixmap(&pixmap, context) != 0)
+        return false;
+    int format = SCREEN_FORMAT_RGBX8888;
+    int usage = SCREEN_USAGE_NATIVE | SCREEN_USAGE_READ;
+    screen_buffer_t buffer = 0;
+    unsigned char *pixels = 0;
+    int stride = 0;
+    bool ok = false;
+    if (screen_set_pixmap_property_iv(pixmap, SCREEN_PROPERTY_FORMAT, &format) == 0
+        && screen_set_pixmap_property_iv(pixmap, SCREEN_PROPERTY_USAGE, &usage) == 0
+        && screen_set_pixmap_property_iv(pixmap, SCREEN_PROPERTY_BUFFER_SIZE, size) == 0
+        && screen_create_pixmap_buffer(pixmap) == 0
+        && screen_get_pixmap_property_pv(pixmap, SCREEN_PROPERTY_RENDER_BUFFERS, (void **)&buffer) == 0
+        && screen_read_window(window, buffer, 0, 0, 0) == 0
+        && screen_get_buffer_property_pv(buffer, SCREEN_PROPERTY_POINTER, (void **)&pixels) == 0
+        && screen_get_buffer_property_iv(buffer, SCREEN_PROPERTY_STRIDE, &stride) == 0 && pixels) {
+        // Screen's RGBX8888 is B, G, R, X in memory; ImageData's RGBX is R, G, B, X.
+        bb::ImageData image(bb::PixelFormat::RGBX, size[0], size[1]);
+        for (int y = 0; y < size[1]; ++y) {
+            const unsigned char *from = pixels + y * stride;
+            unsigned char *to = image.pixels() + y * image.bytesPerLine();
+            for (int x = 0; x < size[0]; ++x, from += 4, to += 4) {
+                to[0] = from[2];
+                to[1] = from[1];
+                to[2] = from[0];
+                to[3] = 255;
+            }
+        }
+        ok = setSnapshot(image);
+    } else {
+        log(QString("cannot read the page's window: %1").arg(strerror(errno)));
+    }
+    screen_destroy_pixmap(pixmap);
+    return ok;
+}
+
+// Handed to Cascades as it is: no file to write and decode again.
+bool Browser::setSnapshot(const bb::ImageData &image)
+{
+    if (!image.isValid())
+        return false;
+    m_snapshotImage = QVariant::fromValue(bb::cascades::Image(image));
+    return true;
 }
 
 void Browser::appVisible()

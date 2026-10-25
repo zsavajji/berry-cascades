@@ -15,6 +15,7 @@
 #include "devtools.h"
 
 namespace bb {
+class ImageData;
 class UIToolkitSupport;
 }
 
@@ -52,6 +53,7 @@ class Browser : public QObject
     Q_PROPERTY(QString searchName READ searchName NOTIFY searchChanged)
     // A file:// address of the page's icon, or empty.
     Q_PROPERTY(QString icon READ icon NOTIFY iconChanged)
+    Q_PROPERTY(QVariant snapshotImage READ snapshotImage NOTIFY snapshotReady)
     // How far the full bar and the title strip are in, 0 (out) to 1 (in).
     Q_PROPERTY(double barsIn READ barsIn NOTIFY barsMoved)
     Q_PROPERTY(double titleIn READ titleIn NOTIFY barsMoved)
@@ -76,6 +78,7 @@ public:
     bool editing() const { return m_editing; }
     QString searchName() const;
     QString icon() const { return m_icon; }
+    QVariant snapshotImage() const { return m_snapshotImage; }
     double barsIn() const { return m_barsIn; }
     double titleIn() const { return m_titleIn; }
 
@@ -117,7 +120,8 @@ public:
     Q_INVOKABLE void clearCookies();
 
     // A picture of the page for Cascades to show while the engine window is
-    // hidden under a menu or dialog; answered by snapshotReady.
+    // hidden under a menu, a dialog or the address; answered by snapshotReady,
+    // with snapshotImage set if ok.
     Q_INVOKABLE void snapshot();
 
     // The stock bars, drawn by Cascades under the page's window (view, its
@@ -144,7 +148,7 @@ signals:
     void bookmarkedChanged();
     void progressChanged();
     // A file:// address of the page's picture, or empty when there is none.
-    void snapshotReady(const QString &url);
+    void snapshotReady(bool ok);
     void restartNeededChanged();
     void selectionChanged();
     void editingChanged();
@@ -195,6 +199,8 @@ private:
     void setProgress(double progress);
     void rememberPage();
     void setPageClip(int top, int bottom);
+    bool grabPage();
+    bool setSnapshot(const bb::ImageData &image);
     void saveIcon(const QString &dataUrl);
     void setIcon(const QString &icon);
     void readSaved(const QString &id, const QString &stream);
@@ -237,7 +243,7 @@ private:
     double m_progress;
     QTimer m_progressTimer;
     int m_snapshotId;
-    int m_snapshotCount;
+    QVariant m_snapshotImage;   // a bb::cascades::Image
     QTimer m_snapshotTimer;
 
     bb::UIToolkitSupport *m_toolkit;

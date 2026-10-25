@@ -5,7 +5,7 @@ TARGET = chromeberry
 CONFIG += qt warn_on release
 QT += declarative network
 QT -= gui
-LIBS += -lbbcascades -lbbdata -lbbsystem -lbb -lscreen
+LIBS += -lbbcascades -lbbdata -lbbsystem -lbb -lbbutility -lscreen
 QMAKE_LFLAGS += -Wl,-rpath-link,$${QNX_DIR}/$${QNX_CPUDIR}/usr/lib/qt4/lib
 QMAKE_CXXFLAGS += -Wno-psabi -fstack-protector-strong
 DEFINES += _FORTIFY_SOURCE=2

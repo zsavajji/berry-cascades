@@ -9,8 +9,9 @@ import bb.system 1.2
 // The page is the engine's own Screen window, bound to the
 // ForeignWindowControl and drawn above this one, so it is hidden whenever
 // Cascades has something to show there (the menu, a sheet, a dialog, the
-// address suggestions). Under the menu and dialogs a snapshot of the page
-// stands in for it.
+// address suggestions, the text magnifier while the address is edited). A
+// snapshot of the page stands in for it under the menu, dialogs and the
+// address.
 Page {
     id: page
     actionBarVisibility: ChromeVisibility.Hidden
@@ -22,13 +23,14 @@ Page {
     property bool menuOpen: false
     property bool dialogOpen: false
     property string pending          // "menu" or "dialog" while a snapshot is taken
-    property string snapshotUrl
+    property bool snapshotShown: false   // browser.snapshotImage is the page
     property bool finding: false
     property bool typing: false
     property string focusText   // the address put in on focus, until the first key
     property real focusTime     // when the address got the focus
     property real movedTime     // when the user first put the cursor somewhere after that
     property bool focusAsked: false   // the address's cover was tapped
+    property bool editCovered: false   // the snapshot stands in for the page while editing
     property real submitTime    // when Go was pressed: its Enter is not for the page
     // Not tied to the address having focus: a tap on a suggestion takes the
     // focus away first. Picking one, Go or Back ends the typing.
@@ -39,7 +41,7 @@ Page {
     }
     property bool sheetOpen: bookmarksSheet.opened || historySheet.opened
                              || downloadsSheet.opened || settingsSheet.opened
-    property bool covered: menuOpen || dialogOpen || sheetOpen || showSuggestions
+    property bool covered: menuOpen || dialogOpen || sheetOpen || showSuggestions || editCovered
     property bool startPage: browser.url.indexOf("file://") == 0
     // What the long-press menu is about.
     property string menuLink
@@ -127,8 +129,19 @@ Page {
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
                     scalingMethod: ScalingMethod.Fill
-                    visible: (page.menuOpen || page.dialogOpen || page.sheetOpen) && page.snapshotUrl != ""
-                    imageSource: page.snapshotUrl
+                    visible: (page.menuOpen || page.dialogOpen || page.sheetOpen || page.editCovered)
+                             && page.snapshotShown
+                    image: browser.snapshotImage
+                    // Straight in place of the page, not faded in.
+                    loadEffect: ImageViewLoadEffect.None
+                    gestureHandlers: [
+                        TapHandler {
+                            onTapped: {
+                                page.typing = false
+                                address.loseFocus()
+                            }
+                        }
+                    ]
                 }
 
                 ForeignWindowControl {
@@ -422,7 +435,11 @@ Page {
                                         page.focusText = page.startPage ? "" : browser.url
                                         address.text = page.focusText
                                         address.editor.setSelection(0, address.text.length)
+                                        // The magnifier is drawn under the page's window.
+                                        page.pending = "edit"
+                                        browser.snapshot()
                                     } else {
+                                        page.editCovered = false
                                         if (!page.typing)
                                             address.text = page.displayUrl(browser.url)
                                     }
@@ -983,14 +1000,16 @@ Page {
         browser.findResult.connect(function (found, count) {
             findCount.text = found || count > 0 ? qsTr("%1 found").arg(count) : qsTr("Not found")
         })
-        browser.snapshotReady.connect(function (url) {
-            page.snapshotUrl = url
+        browser.snapshotReady.connect(function (ok) {
+            page.snapshotShown = ok
             if (page.pending == "menu") {
                 page.menuOpen = true
                 menuSlide.play()
             } else if (page.pending == "dialog") {
                 page.dialogOpen = true
                 pressMenuSlide.play()
+            } else if (page.pending == "edit") {
+                page.editCovered = address.focused && ok
             }
             page.pending = ""
         })
