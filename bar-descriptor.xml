@@ -3,7 +3,7 @@
     <id>io.github.zsavajji.chromeberry</id>
     <name>ChromeBerry</name>
     <versionNumber>0.5.0</versionNumber>
-    <buildId>50</buildId>
+    <buildId>51</buildId>
     <description>A Cascades web browser on Berry Browser's Chromium engine.</description>
     <author>zsavajji</author>
 
