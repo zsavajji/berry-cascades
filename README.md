@@ -17,8 +17,10 @@ and title. The engine's window cannot resize, so it reaches down to the slim
 bar and Cascades clips it where the bars lie over it.
 
 - **Address** (bottom bar): shows the address without its scheme; tap it to
-  type an address or a search, and Go loads it. While you type, it suggests
-  a search with your search engine, then matching bookmarks and history.
+  type an address or a search, and Go loads it. The first tap selects the
+  whole address and the first key replaces it; a second tap places the
+  cursor to edit it. While you type, it suggests a search with your search
+  engine, then matching bookmarks and history.
 - **Search**: DuckDuckGo by default; also DuckDuckGo Lite (the html/ page,
   which works with JavaScript off), Google, Bing and Wikipedia.
 - **⋮ menu**, sliding in from the right: Forward, Home, Add to

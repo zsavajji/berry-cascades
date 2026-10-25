@@ -25,10 +25,11 @@ Page {
     property string snapshotUrl
     property bool finding: false
     property bool typing: false
-    property string focusText   // the address as it was selected on focus
-    // The tap that focuses the address then puts the cursor where it landed,
-    // undoing the selection: the first cursor move after focus selects all again.
-    property bool selectOnTap: false
+    property string focusText   // the address put in on focus, until the first key
+    property real focusTime     // when the address got the focus
+    property real movedTime     // when the user first put the cursor somewhere after that
+    property bool focusAsked: false   // the address's cover was tapped
+    property real submitTime    // when Go was pressed: its Enter is not for the page
     // Not tied to the address having focus: a tap on a suggestion takes the
     // focus away first. Picking one, Go or Back ends the typing.
     property bool showSuggestions: typing && address.text.length > 0
@@ -68,6 +69,9 @@ Page {
         // Keys typed while no Cascades field is focused go to the page.
         KeyListener {
             onKeyPressed: {
+                // The Enter that pressed Go arrives once the address has let go of the focus.
+                if (event.key == 13 && Date.now() - page.submitTime < 1000)
+                    return
                 if (!address.focused && !findField.focused && browser.engineState == "running")
                     browser.sendKey(event.key)
             }
@@ -369,64 +373,97 @@ Page {
                             preferredHeight: ui.du(3.8)
                             verticalAlignment: VerticalAlignment.Center
                         }
-                        TextField {
-                            id: address
-                            text: page.displayUrl(browser.url)
-                            hintText: qsTr("Search or enter an address")
-                            inputMode: TextFieldInputMode.Url
-                            backgroundVisible: false
-                            textStyle.fontSize: FontSize.PercentageValue
-                            textStyle.fontSizeValue: 108
-                            clearButtonVisible: true
-                            textStyle.color: Color.White
+                        // A tap on the field puts the cursor where the finger was,
+                        // which drops the selection made on focus (and selecting
+                        // again during the tap stops the keyboard typing). So the
+                        // unfocused field is covered, and the cover focuses it.
+                        Container {
+                            layout: DockLayout {}
                             verticalAlignment: VerticalAlignment.Center
+                            // The selection handle at the field's end stays in the pill.
+                            rightPadding: 20
                             layoutProperties: StackLayoutProperties {
                                 spaceQuota: 1
                             }
-                            input {
-                                submitKey: SubmitKey.Go
-                                onSubmitted: {
-                                    browser.open(address.text)
-                                    page.typing = false
-                                    address.loseFocus()
-                                }
-                            }
-                            onFocusedChanged: {
-                                if (focused) {
-                                    page.typing = false
-                                    address.text = page.startPage ? "" : browser.url
-                                    page.focusText = address.text
-                                    address.editor.setSelection(0, address.text.length)
-                                    page.selectOnTap = true
-                                } else {
-                                    page.selectOnTap = false
-                                    if (!page.typing)
-                                        address.text = page.displayUrl(browser.url)
-                                }
-                            }
-                            onTextChanging: {
-                                page.selectOnTap = false
-                                if (!focused)
-                                    return
-                                // The first key should replace the address selected on
-                                // focus, but the phone's keyboard moves the cursor to the
-                                // end and appends: replace here. Only a real change counts
-                                // (the cursor moving reports the same text). Setting the
-                                // text comes back through this handler.
-                                var old = page.focusText
-                                if (old != "" && text != old) {
-                                    page.focusText = ""
-                                    if (text.length > old.length && text.indexOf(old) == 0) {
-                                        address.text = text.substring(old.length)
-                                        return
-                                    }
-                                    if (text.length < old.length && old.indexOf(text) == 0) {
-                                        address.text = ""
-                                        return
+                            TextField {
+                                id: address
+                                text: page.displayUrl(browser.url)
+                                hintText: qsTr("Search or enter an address")
+                                inputMode: TextFieldInputMode.Url
+                                backgroundVisible: false
+                                textStyle.fontSize: FontSize.PercentageValue
+                                textStyle.fontSizeValue: 108
+                                clearButtonVisible: true
+                                textStyle.color: Color.White
+                                verticalAlignment: VerticalAlignment.Center
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                input {
+                                    submitKey: SubmitKey.Go
+                                    onSubmitted: {
+                                        page.submitTime = Date.now()
+                                        browser.open(address.text)
+                                        page.typing = false
+                                        address.loseFocus()
                                     }
                                 }
-                                page.typing = true
-                                page.fillSuggestions(text)
+                                onFocusedChanged: {
+                                    // Only the user's tap: Cascades also focuses the address when the
+                                    // app comes back, and the keys meant for the page went there.
+                                    if (focused && !page.focusAsked) {
+                                        address.loseFocus()
+                                        return
+                                    }
+                                    page.focusAsked = false
+                                    if (focused) {
+                                        page.typing = false
+                                        page.focusTime = Date.now()
+                                        page.movedTime = 0
+                                        // First: setting the text comes back through onTextChanging.
+                                        page.focusText = page.startPage ? "" : browser.url
+                                        address.text = page.focusText
+                                        address.editor.setSelection(0, address.text.length)
+                                    } else {
+                                        if (!page.typing)
+                                            address.text = page.displayUrl(browser.url)
+                                    }
+                                }
+                                onTextChanging: {
+                                    // Setting the address on focus, or the cursor moving,
+                                    // reports it unchanged.
+                                    if (!focused || text == page.focusText)
+                                        return
+                                    // The first key replaces the address selected on focus,
+                                    // even if the selection was lost (the keyboard puts the
+                                    // cursor at the end), unless the user put the cursor
+                                    // somewhere first: then it edits. Setting the text comes
+                                    // back through this handler.
+                                    var old = page.focusText
+                                    if (old != "") {
+                                        page.focusText = ""
+                                        var edited = page.movedTime > 0 && Date.now() - page.movedTime > 150
+                                        var kept = edited ? text : page.firstKey(old, text)
+                                        if (kept != text) {
+                                            address.text = kept
+                                            return
+                                        }
+                                    }
+                                    page.typing = true
+                                    page.fillSuggestions(text)
+                                }
+                            }
+                            Container {
+                                visible: !address.focused
+                                horizontalAlignment: HorizontalAlignment.Fill
+                                verticalAlignment: VerticalAlignment.Fill
+                                background: Color.Transparent
+                                gestureHandlers: [
+                                    TapHandler {
+                                        onTapped: {
+                                            page.focusAsked = true
+                                            address.requestFocus()
+                                        }
+                                    }
+                                ]
                             }
                         }
                         ImageButton {
@@ -850,6 +887,23 @@ Page {
         shareQuery.updateQuery()
     }
 
+    // What the first key after focus should leave of the address it changed
+    // from old to text: only what it inserted, or nothing if it deleted.
+    function firstKey(old, text) {
+        var p = 0
+        while (p < old.length && p < text.length && old.charAt(p) == text.charAt(p))
+            p++
+        var s = 0
+        while (s < old.length - p && s < text.length - p
+               && old.charAt(old.length - 1 - s) == text.charAt(text.length - 1 - s))
+            s++
+        if (p + s == old.length)
+            return text.substring(p, text.length - s)
+        if (p + s == text.length)
+            return ""
+        return text
+    }
+
     function fillSuggestions(text) {
         suggestionModel.clear()
         if (text.length == 0)
@@ -899,11 +953,15 @@ Page {
                 address.text = page.displayUrl(browser.url)
         })
         browser.contextMenu.connect(page.showMenu)
+        // Focusing may still move the cursor right away (never select the address
+        // again from here: it leaves the keyboard unable to type at all). A cursor
+        // put somewhere later is the user's, to edit.
         address.editor.cursorPositionChanged.connect(function () {
-            if (page.selectOnTap) {
-                page.selectOnTap = false
-                address.editor.setSelection(0, address.text.length)
-            }
+            if (page.focusText == "" || !address.focused)
+                return
+            var since = Date.now() - page.focusTime
+            if (since > 500 && page.movedTime == 0)
+                page.movedTime = Date.now()
         })
         browser.setBarHeights(page.titleHeight, page.slimHeight, page.fullHeight)
         // The stock bars.
