@@ -106,6 +106,8 @@ public:
     Q_INVOKABLE void typeText(const QString &text);
     // Clipboard text into the focused field of the page.
     Q_INVOKABLE void paste();
+    // A swipe on the trackpad (Q20) or the touch keyboard (Passport), in its units.
+    Q_INVOKABLE void scrollPage(double dx, double dy);
 
     Q_INVOKABLE void selectAll();
     Q_INVOKABLE void clearSelection();

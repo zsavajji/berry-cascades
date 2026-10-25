@@ -91,6 +91,16 @@ Page {
         id: root
         background: Color.create("#262626")
         layout: DockLayout {}
+        // The trackpad (Q20) and the touch keyboard's swipes (Passport) scroll the page.
+        eventHandlers: [
+            TrackpadHandler {
+                onTrackpad: {
+                    if (event.trackpadEventType == TrackpadEventType.Move
+                            && browser.engineState == "running" && !page.covered)
+                        browser.scrollPage(event.deltaX, event.deltaY)
+                }
+            }
+        ]
         attachedObjects: [
             LayoutUpdateHandler {
                 onLayoutFrameChanged: page.rootWidth = layoutFrame.width

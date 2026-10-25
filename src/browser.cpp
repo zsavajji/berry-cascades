@@ -1287,6 +1287,23 @@ void Browser::paste()
     m_devtools->call("Input.insertText", params);
 }
 
+// A mouse wheel over the middle of the page: the engine scrolls it off its
+// main thread, which stalls for seconds on heavy pages.
+void Browser::scrollPage(double dx, double dy)
+{
+    if (!m_devtools->isAttached() || m_width <= 0)
+        return;
+    const double kWheelPerUnit = 4;  // a guess, to tune on a Q20 or a Passport
+    const double css = kRenderScales[defaultQuality(m_width, m_height)];  // CSS px per window px
+    QVariantMap params;
+    params["type"] = QString("mouseWheel");
+    params["x"] = m_width * css / 2;
+    params["y"] = m_height * css / 2;
+    params["deltaX"] = dx * kWheelPerUnit;
+    params["deltaY"] = dy * kWheelPerUnit;
+    m_devtools->call("Input.dispatchMouseEvent", params);
+}
+
 void Browser::selectAll()
 {
     evaluate("window.__berry&&__berry.selectAll()", QString());
