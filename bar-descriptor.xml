@@ -2,8 +2,8 @@
 <qnx xmlns="http://www.qnx.com/schemas/application/1.0">
     <id>io.github.zsavajji.chromeberry</id>
     <name>ChromeBerry</name>
-    <versionNumber>0.4.0</versionNumber>
-    <buildId>19</buildId>
+    <versionNumber>0.5.0</versionNumber>
+    <buildId>46</buildId>
     <description>A Cascades web browser on Berry Browser's Chromium engine.</description>
     <author>zsavajji</author>
 
