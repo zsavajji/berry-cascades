@@ -7,13 +7,14 @@ Container {
     property alias title: label.text
     property alias imageSource: icon.imageSource
     signal triggered()
+    property real verticalPadding: ui.du(1.6)
 
     horizontalAlignment: HorizontalAlignment.Fill
     background: pressedState ? Color.create("#2b2b2b") : Color.Transparent
     opacity: enabled ? 1.0 : 0.35
     property bool pressedState: false
-    topPadding: ui.du(1.6)
-    bottomPadding: ui.du(1.6)
+    topPadding: verticalPadding
+    bottomPadding: verticalPadding
     leftPadding: ui.du(2.2)
     rightPadding: ui.du(2.2)
     layout: StackLayout {

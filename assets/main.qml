@@ -40,8 +40,7 @@ Page {
                              || downloadsSheet.opened || settingsSheet.opened
     property bool covered: menuOpen || dialogOpen || sheetOpen || showSuggestions
     property bool startPage: browser.url.indexOf("file://") == 0
-    // What the long-press menu's rows do, in order.
-    property variant menuActions: []
+    // What the long-press menu is about.
     property string menuLink
     property string menuText
     property string menuImage
@@ -563,9 +562,9 @@ Page {
             }
         }
 
-        // ---- the ⋮ menu, sliding in from the right ------------------------
+        // ---- the ⋮ menu and the long-press menu, sliding in from the right --
         Container {
-            visible: page.menuOpen
+            visible: page.menuOpen || page.dialogOpen
             horizontalAlignment: HorizontalAlignment.Fill
             verticalAlignment: VerticalAlignment.Fill
             background: Color.create("#99000000")
@@ -580,19 +579,22 @@ Page {
             visible: page.menuOpen
             horizontalAlignment: HorizontalAlignment.Right
             verticalAlignment: VerticalAlignment.Fill
-            preferredWidth: Math.min(page.rootWidth * 0.66, ui.du(60))
+            // As wide as its longest row ("Add to bookmarks"), with some room.
+            preferredWidth: ui.du(44)
             background: Color.create("#121212")
             animations: [
                 TranslateTransition {
                     id: menuSlide
-                    fromX: page.rootWidth * 0.66
+                    fromX: ui.du(44)
                     toX: 0
                     duration: 160
                     easingCurve: StockCurve.CubicOut
                 }
             ]
             ScrollView {
+                horizontalAlignment: HorizontalAlignment.Fill
                 Container {
+                    horizontalAlignment: HorizontalAlignment.Fill
                     topPadding: ui.du(1)
                     MenuRow {
                         title: qsTr("Forward")
@@ -668,6 +670,98 @@ Page {
                 }
             }
         }
+        // The long-press menu on a link or an image: the address, then what
+        // applies to it.
+        Container {
+            visible: page.dialogOpen
+            horizontalAlignment: HorizontalAlignment.Right
+            verticalAlignment: VerticalAlignment.Fill
+            preferredWidth: ui.du(44)
+            background: Color.create("#121212")
+            animations: [
+                TranslateTransition {
+                    id: pressMenuSlide
+                    fromX: ui.du(44)
+                    toX: 0
+                    duration: 160
+                    easingCurve: StockCurve.CubicOut
+                }
+            ]
+            Container {
+                horizontalAlignment: HorizontalAlignment.Fill
+                topPadding: ui.du(2)
+                bottomPadding: ui.du(1)
+                leftPadding: ui.du(2.2)
+                rightPadding: ui.du(2.2)
+                Label {
+                    text: page.displayUrl(page.menuLink != "" ? page.menuLink : page.menuImage)
+                    textStyle.color: Color.create("#9a9a9a")
+                    textStyle.base: SystemDefaults.TextStyles.SubtitleText
+                }
+            }
+            ScrollView {
+                horizontalAlignment: HorizontalAlignment.Fill
+                Container {
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    MenuRow {
+                        verticalPadding: ui.du(2.6)
+                        title: qsTr("Open")
+                        imageSource: "asset:///images/forward.png"
+                        visible: page.menuLink != ""
+                        onTriggered: page.menuDo(function () { browser.open(page.menuLink) })
+                    }
+                    MenuRow {
+                        verticalPadding: ui.du(2.6)
+                        title: qsTr("Copy link")
+                        imageSource: "asset:///images/copy.png"
+                        visible: page.menuLink != ""
+                        onTriggered: page.menuDo(function () { browser.copyText(page.menuLink) })
+                    }
+                    MenuRow {
+                        verticalPadding: ui.du(2.6)
+                        title: qsTr("Share link")
+                        imageSource: "asset:///images/share.png"
+                        visible: page.menuLink != ""
+                        onTriggered: page.menuDo(function () { page.share(page.menuLink) })
+                    }
+                    MenuRow {
+                        verticalPadding: ui.du(2.6)
+                        title: qsTr("Copy link text")
+                        imageSource: "asset:///images/copy.png"
+                        visible: page.menuLink != "" && page.menuText != ""
+                        onTriggered: page.menuDo(function () { browser.copyText(page.menuText) })
+                    }
+                    MenuRow {
+                        verticalPadding: ui.du(2.6)
+                        title: qsTr("Open image")
+                        imageSource: "asset:///images/forward.png"
+                        visible: page.menuImage != ""
+                        onTriggered: page.menuDo(function () { browser.open(page.menuImage) })
+                    }
+                    MenuRow {
+                        verticalPadding: ui.du(2.6)
+                        title: qsTr("Save image")
+                        imageSource: "asset:///images/downloads.png"
+                        visible: page.menuImage != ""
+                        onTriggered: page.menuDo(function () { downloads.save(page.menuImage) })
+                    }
+                    MenuRow {
+                        verticalPadding: ui.du(2.6)
+                        title: qsTr("Copy image address")
+                        imageSource: "asset:///images/copy.png"
+                        visible: page.menuImage != ""
+                        onTriggered: page.menuDo(function () { browser.copyText(page.menuImage) })
+                    }
+                    MenuRow {
+                        verticalPadding: ui.du(2.6)
+                        title: qsTr("Share image address")
+                        imageSource: "asset:///images/share.png"
+                        visible: page.menuImage != "" && page.menuLink == ""
+                        onTriggered: page.menuDo(function () { page.share(page.menuImage) })
+                    }
+                }
+            }
+        }
     }
 
     attachedObjects: [
@@ -707,18 +801,6 @@ Page {
         SystemToast {
             id: toast
         },
-        // The long-press menu on a link or an image.
-        SystemListDialog {
-            id: menuDialog
-            selectionMode: ListSelectionMode.Single
-            dismissOnSelection: true
-            onFinished: {
-                page.dialogOpen = false
-                var picked = menuDialog.selectedIndices
-                if (picked.length > 0)
-                    page.runMenuAction(page.menuActions[picked[0]])
-            }
-        },
         // Sharing text from a button: set the data, and trigger once armed.
         Invocation {
             id: shareInvocation
@@ -752,10 +834,11 @@ Page {
 
     function closeMenu() {
         page.menuOpen = false
+        page.dialogOpen = false
     }
 
     function menuDo(action) {
-        page.menuOpen = false
+        page.closeMenu()
         action()
     }
 
@@ -792,45 +875,11 @@ Page {
     }
 
     function showMenu(link, linkText, image) {
-        var titles = []
-        var actions = []
-        if (link) {
-            titles.push(qsTr("Open"), qsTr("Copy link"), qsTr("Share link"))
-            actions.push("open", "copyLink", "shareLink")
-            if (linkText) {
-                titles.push(qsTr("Copy link text"))
-                actions.push("copyText")
-            }
-        }
-        if (image) {
-            titles.push(qsTr("Open image"), qsTr("Save image"), qsTr("Copy image address"))
-            actions.push("openImage", "saveImage", "copyImage")
-            if (!link) {
-                titles.push(qsTr("Share image address"))
-                actions.push("shareImage")
-            }
-        }
         page.menuLink = link
         page.menuText = linkText
         page.menuImage = image
-        page.menuActions = actions
-        menuDialog.title = link ? link : image
-        menuDialog.clearList()
-        for (var i = 0; i < titles.length; ++i)
-            menuDialog.appendItem(titles[i])
         page.pending = "dialog"
         browser.snapshot()
-    }
-
-    function runMenuAction(action) {
-        if (action == "open") browser.open(page.menuLink)
-        else if (action == "copyLink") browser.copyText(page.menuLink)
-        else if (action == "shareLink") page.share(page.menuLink)
-        else if (action == "copyText") browser.copyText(page.menuText)
-        else if (action == "openImage") browser.open(page.menuImage)
-        else if (action == "saveImage") downloads.save(page.menuImage)
-        else if (action == "copyImage") browser.copyText(page.menuImage)
-        else if (action == "shareImage") page.share(page.menuImage)
     }
 
     onCreationCompleted: {
@@ -883,7 +932,7 @@ Page {
                 menuSlide.play()
             } else if (page.pending == "dialog") {
                 page.dialogOpen = true
-                menuDialog.show()
+                pressMenuSlide.play()
             }
             page.pending = ""
         })

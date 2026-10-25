@@ -26,8 +26,9 @@ bar and Cascades clips it where the bars lie over it.
   Copy link, Downloads, Settings, Restart engine.
 - **History**: every page visited, newest first, searchable; hold to delete
   one, or clear it all.
-- **Long press** on a link or an image: Open, Copy link,
-  Share link, Copy link text; Open image, Save image, Copy image address.
+- **Long press** on a link or an image: a panel slides in from the right
+  with what applies (Open, Copy link, Share link, Copy link text; Open
+  image, Save image, Copy image address), the address at its top.
 - **Text selection**: hold on text to select a word, then drag the handles.
   The bottom bar then copies it, searches for it, shares it, selects all, or
   ends the selection. A tap on the page ends it too. The page script draws
