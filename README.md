@@ -78,7 +78,7 @@ Not carried over: HTTP authentication and saved passwords, and page width.
 ## Speed
 
 See [docs/SPEED.md](docs/SPEED.md): what limits the Krait phones, what the app
-does about it (pausing pages when minimized, the image-decode budget,
+does about it (the image-decode budget,
 CPU-aware raster threads and frame cap, lighter WebAssembly), and what is
 left for an engine build (ThinLTO, PGO).
 

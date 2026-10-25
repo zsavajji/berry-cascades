@@ -261,17 +261,6 @@ Page {
             }
             CheckBox {
                 topMargin: 20
-                text: qsTr("Pause pages while the browser is minimized")
-                checked: browser.setting("pauseInBackground")
-                onCheckedChanged: browser.setSetting("pauseInBackground", checked)
-            }
-            Label {
-                text: qsTr("Turn this off to keep music or calls in a page playing in the background.")
-                multiline: true
-                textStyle.base: SystemDefaults.TextStyles.SubtitleText
-            }
-            CheckBox {
-                topMargin: 20
                 text: qsTr("Verify HTTPS certificates (slower)")
                 checked: browser.setting("verifyCerts")
                 onCheckedChanged: browser.setSetting("verifyCerts", checked)

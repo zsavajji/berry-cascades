@@ -191,7 +191,6 @@ private:
     void applySwipe();
     void applyMobileView();
     void setProgress(double progress);
-    void setPageActive(bool active);
     void rememberPage();
     void setPageClip(int top, int bottom);
     void saveIcon(const QString &dataUrl);
@@ -236,7 +235,6 @@ private:
     int m_snapshotId;
     int m_snapshotCount;
     QTimer m_snapshotTimer;
-    bool m_pageActive;
 
     bb::UIToolkitSupport *m_toolkit;
 

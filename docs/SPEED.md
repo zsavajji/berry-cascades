@@ -24,7 +24,7 @@ free for the main thread.
 
 | Change | Why | Source |
 |---|---|---|
-| **Pauses the page while the app is minimized** (`Page.setWebLifecycleState` frozen on thumbnail/invisible, active on fullscreen; Settings can turn it off) | The shim keeps the engine away from the Navigator, so Berry's own background throttling (notes §12) never fired: a minimized browser kept running scripts and animations. Frozen pages run no script, timers or frames. | notes §12; checked against desktop Chromium |
+| ~~Pauses the page while the app is minimized~~ (removed in 0.5.0) | `Page.setWebLifecycleState` "frozen" also marks the page hidden, and "active" does not show it again (Chromium 120 `PageHandler::SetWebLifecycleState`): the page stayed white until the engine restarted. Nothing else over DevTools shows it, so a minimized browser keeps running scripts and animations. | Chromium 120 page_handler.cc |
 | **128 MB decoded-image budget** (`--enable-features=ImageDecodeConfigurableFeature:DecodedImageWorkingSetBudgetBytesForLowEndDevice/134217728`) | Low-end mode cuts it to 32 MB, so images are dropped and re-decoded on every scroll. | berry-v3 a1a2948 (build 107) |
 | **Raster threads = CPU cores** (4 on quad-core, 2 on dual-core) | Four raster threads on a dual-core Q10 compete with the main thread. | notes §6 |
 | **Frame cap by CPU**: 45 fps on quad-core, 30 on dual-core; Settings → Frame rate cap | Fewer frames on animated pages leave the main thread more time. | notes §6, launcher `QNX_MAX_FPS` |

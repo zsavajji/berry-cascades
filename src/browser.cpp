@@ -117,7 +117,6 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     , m_progress(0)
     , m_snapshotId(-1)
     , m_snapshotCount(0)
-    , m_pageActive(true)
     , m_iconCount(0)
     , m_titleHeight(0)
     , m_slimHeight(0)
@@ -546,7 +545,6 @@ void Browser::attached()
     if (firstAttach)
         log(QString("connected to DevTools on port %1 after %2 s")
                 .arg(m_port).arg(m_probeAttempts * kProbeMs / 1000.0, 0, 'f', 1));
-    m_pageActive = true;
     setEngineState("running");
     m_probe.start(kWatchMs);
     m_devtools->call("Page.enable");
@@ -823,27 +821,11 @@ void Browser::snapshotTimedOut()
 void Browser::appVisible()
 {
     log("app in full screen");
-    setPageActive(true);
 }
 
 void Browser::appHidden()
 {
     log("app minimized or the screen off");
-    if (setting("pauseInBackground").toBool())
-        setPageActive(false);
-}
-
-// A frozen page runs no script, timers or animation frames, so a minimized
-// browser leaves the CPU to the app in front.
-void Browser::setPageActive(bool active)
-{
-    if (active == m_pageActive)
-        return;
-    m_pageActive = active;
-    log(active ? "page active" : "page frozen");
-    QVariantMap params;
-    params["state"] = QString(active ? "active" : "frozen");
-    m_devtools->call("Page.setWebLifecycleState", params);
 }
 
 // ---- navigation ----------------------------------------------------------
@@ -1339,7 +1321,7 @@ QVariant Browser::setting(const QString &key) const
         || key == "scrollbars" || key == "detailedLog" || key == "darkPages" || key == "quic"
         || key == "http1")
         return m_settings.value(key, false).toBool();
-    if (key == "javascript" || key == "images" || key == "suggestions" || key == "pauseInBackground"
+    if (key == "javascript" || key == "images" || key == "suggestions"
         || key == "mobileView" || key == "gpu" || key == "lowEnd" || key == "diskCache"
         || key == "serviceWorkers" || key == "privacyCuts")
         return m_settings.value(key, true).toBool();
