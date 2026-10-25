@@ -1,4 +1,4 @@
-import bb.cascades 1.3
+import bb.cascades 1.4
 
 // The Active Frame: the browser's card while it is minimized, with the
 // page's icon, title and address (main.cpp makes it the app's cover).

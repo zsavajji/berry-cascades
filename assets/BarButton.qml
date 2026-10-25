@@ -1,4 +1,4 @@
-import bb.cascades 1.3
+import bb.cascades 1.4
 
 // An icon button in the bottom bar, with a touch target wider than its icon.
 Container {

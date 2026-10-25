@@ -1,4 +1,4 @@
-import bb.cascades 1.3
+import bb.cascades 1.4
 
 // The thin vertical rule between the stock bar's buttons.
 Container {

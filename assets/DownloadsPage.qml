@@ -1,4 +1,4 @@
-import bb.cascades 1.2
+import bb.cascades 1.4
 
 Page {
     id: downloadsPage
