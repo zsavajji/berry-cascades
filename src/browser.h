@@ -179,6 +179,8 @@ private slots:
     void appHidden();
     void swipeFromTop();
     void stepBars();
+    void fetchForDownload(const QString &id, const QString &url);
+    void downloadsLog(const QString &line) { log("downloads: " + line); }
 
 private:
     void launch();
@@ -195,6 +197,7 @@ private:
     void setPageClip(int top, int bottom);
     void saveIcon(const QString &dataUrl);
     void setIcon(const QString &icon);
+    void readSaved(const QString &id, const QString &stream);
     QString fixUp(const QString &input) const;
     QString engineDir() const;
     void log(const QString &line) const;
@@ -229,6 +232,7 @@ private:
     QString m_selectionText;
     bool m_editing;
     QMap<int, QString> m_evaluations;
+    QMap<int, QStringList> m_saves;   // "Save image" calls: {download id, stream}
 
     double m_progress;
     QTimer m_progressTimer;

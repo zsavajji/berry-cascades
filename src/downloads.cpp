@@ -1,14 +1,8 @@
 #include "downloads.h"
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QSslCertificate>
-#include <QSslConfiguration>
 #include <QUrl>
 
 #include <bb/system/InvokeManager>
@@ -31,7 +25,6 @@ QString nameFromUrl(const QUrl &url)
 Downloads::Downloads(QObject *parent)
     : QObject(parent)
     , m_tools(new DevTools(this))
-    , m_network(0)
     , m_nextId(1)
 {
     QFileInfo shared(kSharedDownloads);
@@ -41,6 +34,8 @@ Downloads::Downloads(QObject *parent)
 
     connect(m_tools, SIGNAL(versionFetched(QVariantMap)), this, SLOT(versionFetched(QVariantMap)));
     connect(m_tools, SIGNAL(attached()), this, SLOT(attached()));
+    connect(m_tools, SIGNAL(failed(int, QString, QString)), this, SLOT(refused(int, QString, QString)));
+    connect(m_tools, SIGNAL(targetsFailed()), this, SLOT(unreachable()));
     connect(m_tools, SIGNAL(event(QString, QVariantMap)),
             this, SLOT(protocolEvent(QString, QVariantMap)));
 }
@@ -59,7 +54,7 @@ void Downloads::disconnectEngine()
     m_tools->close();
     for (int i = 0; i < m_items.size(); ++i) {
         QVariantMap item = m_items.at(i).toMap();
-        if (item.value("state") == "inProgress" && !item.value("id").toString().startsWith("q")) {
+        if (item.value("state") == "inProgress") {
             item["state"] = "failed";
             m_items[i] = item;
         }
@@ -69,7 +64,19 @@ void Downloads::disconnectEngine()
 
 void Downloads::versionFetched(const QVariantMap &version)
 {
-    m_tools->attachBrowser(version.value("webSocketDebuggerUrl").toString());
+    const QString url = version.value("webSocketDebuggerUrl").toString();
+    emit log("browser target " + (url.isEmpty() ? QString("missing") : url));
+    m_tools->attachBrowser(url);
+}
+
+void Downloads::refused(int, const QString &method, const QString &message)
+{
+    emit log(QString("DevTools refused %1: %2").arg(method, message));
+}
+
+void Downloads::unreachable()
+{
+    emit log("DevTools did not answer /json/version");
 }
 
 void Downloads::attached()
@@ -81,6 +88,7 @@ void Downloads::attached()
     params["downloadPath"] = m_folder;
     params["eventsEnabled"] = true;
     m_tools->call("Browser.setDownloadBehavior", params);
+    emit log("page downloads go to " + m_folder);
 }
 
 void Downloads::protocolEvent(const QString &method, const QVariantMap &params)
@@ -97,7 +105,8 @@ void Downloads::protocolEvent(const QString &method, const QVariantMap &params)
         item["state"] = QString("inProgress");
         m_items.prepend(item);
         emit changed();
-        emit message(tr("Downloading %1").arg(item.value("name").toString()));
+        emit message(tr("Download started: %1").arg(item.value("name").toString()));
+        emit log("page download began: " + item.value("url").toString());
     } else if (method == "Browser.downloadProgress") {
         QVariantMap fields;
         fields["received"] = params.value("receivedBytes");
@@ -109,13 +118,18 @@ void Downloads::protocolEvent(const QString &method, const QVariantMap &params)
         const QVariantMap item = m_items.at(index).toMap();
         const bool wasRunning = item.value("state") == "inProgress";
         const QString name = item.value("name").toString();
+        if (wasRunning && fields.value("state") != "inProgress")
+            emit log(QString("page download %1 after %2 bytes: %3").arg(fields.value("state").toString())
+                         .arg(fields.value("received").toLongLong()).arg(name));
         if (wasRunning && fields.value("state") == "completed") {
             const QString path = uniquePath(name.isEmpty() ? QString("download") : name);
             if (QFile::rename(m_folder + "/" + id, path)) {
                 fields["path"] = path;
                 fields["name"] = QFileInfo(path).fileName();
+            } else {
+                emit log("could not rename " + m_folder + "/" + id + " to " + path);
             }
-            emit message(tr("Saved %1 to Downloads").arg(fields.value("name", name).toString()));
+            emit message(tr("Download complete: %1").arg(fields.value("name", name).toString()));
         } else if (wasRunning && fields.value("state") == "canceled") {
             emit message(tr("Download of %1 canceled").arg(name));
         }
@@ -157,7 +171,7 @@ void Downloads::save(const QString &address)
         item["state"] = QString(ok ? "completed" : "failed");
         m_items.prepend(item);
         emit changed();
-        emit message(ok ? tr("Saved %1 to Downloads").arg(item.value("name").toString())
+        emit message(ok ? tr("Download complete: %1").arg(item.value("name").toString())
                         : tr("Could not save the image"));
         return;
     }
@@ -167,70 +181,53 @@ void Downloads::save(const QString &address)
         return;
     }
 
-    if (!m_network) {
-        m_network = new QNetworkAccessManager(this);
-        // The phone's own root store predates many of today's certificates;
-        // the engine ships a current one.
-        const QList<QSslCertificate> roots = QSslCertificate::fromPath(
-            QCoreApplication::applicationDirPath() + "/engine/root_store.certs");
-        if (!roots.isEmpty()) {
-            QSslConfiguration config = QSslConfiguration::defaultConfiguration();
-            config.setCaCertificates(roots);
-            QSslConfiguration::setDefaultConfiguration(config);
-        }
-    }
     const QString path = uniquePath(nameFromUrl(url));
     item["name"] = QFileInfo(path).fileName();
     item["path"] = path;
     m_items.prepend(item);
     emit changed();
-    emit message(tr("Downloading %1").arg(item.value("name").toString()));
-
-    QNetworkRequest request(url);
-    request.setRawHeader("User-Agent", "Mozilla/5.0 (Linux; Android 10; BlackBerry) Mobile");
-    QNetworkReply *reply = m_network->get(request);
-    m_replies.insert(reply, id);
-    connect(reply, SIGNAL(downloadProgress(qint64, qint64)), this, SLOT(replyProgress(qint64, qint64)));
-    connect(reply, SIGNAL(finished()), this, SLOT(replyFinished()));
+    emit message(tr("Download started: %1").arg(item.value("name").toString()));
+    emit log("saving " + address + " as " + path);
+    emit fetch(id, address);
 }
 
-void Downloads::replyProgress(qint64 received, qint64 total)
+bool Downloads::append(const QString &id, const QByteArray &data)
 {
-    QNetworkReply *reply = qobject_cast<QNetworkReply *>(sender());
-    if (!reply || !m_replies.contains(reply))
-        return;
+    const int index = indexOf(id);
+    if (index < 0)
+        return false;
+    const QVariantMap item = m_items.at(index).toMap();
+    if (item.value("state") != "inProgress")
+        return false;
+    QFile file(item.value("path").toString());
+    if (!file.open(QIODevice::Append) || file.write(data) != data.size()) {
+        finish(id, tr("could not write %1").arg(file.fileName()));
+        return false;
+    }
     QVariantMap fields;
-    fields["received"] = received;
-    fields["total"] = qMax(total, qint64(0));
-    update(m_replies.value(reply), fields);
+    fields["received"] = item.value("received").toLongLong() + data.size();
+    update(id, fields);
+    return true;
 }
 
-void Downloads::replyFinished()
+void Downloads::finish(const QString &id, const QString &error)
 {
-    QNetworkReply *reply = qobject_cast<QNetworkReply *>(sender());
-    if (!reply || !m_replies.contains(reply))
-        return;
-    const QString id = m_replies.take(reply);
-    reply->deleteLater();
     const int index = indexOf(id);
     if (index < 0)
         return;
     const QVariantMap item = m_items.at(index).toMap();
+    if (item.value("state") != "inProgress")
+        return;
     QVariantMap fields;
-    if (reply->error() == QNetworkReply::OperationCanceledError) {
-        fields["state"] = QString("canceled");
-    } else if (reply->error() != QNetworkReply::NoError) {
-        fields["state"] = QString("failed");
-        emit message(tr("Download failed: %1").arg(reply->errorString()));
+    fields["state"] = QString(error.isEmpty() ? "completed" : "failed");
+    fields["total"] = item.value("received");
+    emit log(QString("saved %1 bytes: %2").arg(item.value("received").toLongLong())
+                 .arg(error.isEmpty() ? QString("done") : error));
+    if (error.isEmpty()) {
+        emit message(tr("Download complete: %1").arg(item.value("name").toString()));
     } else {
-        const QByteArray body = reply->readAll();
-        QFile file(item.value("path").toString());
-        const bool ok = file.open(QIODevice::WriteOnly) && file.write(body) == body.size();
-        fields["state"] = QString(ok ? "completed" : "failed");
-        fields["received"] = body.size();
-        fields["total"] = body.size();
-        emit message(ok ? tr("Saved %1 to Downloads").arg(item.value("name").toString())
-                        : tr("Could not write %1").arg(item.value("path").toString()));
+        QFile::remove(item.value("path").toString());
+        emit message(tr("Download failed: %1").arg(error));
     }
     update(id, fields);
 }
@@ -239,11 +236,13 @@ void Downloads::replyFinished()
 
 void Downloads::cancel(const QString &id)
 {
-    for (QMap<QNetworkReply *, QString>::iterator it = m_replies.begin(); it != m_replies.end(); ++it) {
-        if (it.value() == id) {
-            it.key()->abort();
-            return;
-        }
+    // A saved address stops at its next part (append() says no more).
+    if (id.startsWith("q")) {
+        QVariantMap fields;
+        fields["state"] = QString("canceled");
+        update(id, fields);
+        QFile::remove(m_items.value(indexOf(id)).toMap().value("path").toString());
+        return;
     }
     QVariantMap params;
     params["guid"] = id;

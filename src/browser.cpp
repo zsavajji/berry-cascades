@@ -175,6 +175,8 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
             this, SLOT(failed(int, QString, QString)));
     connect(m_devtools, SIGNAL(event(QString, QVariantMap)),
             this, SLOT(protocolEvent(QString, QVariantMap)));
+    connect(m_downloads, SIGNAL(fetch(QString, QString)), this, SLOT(fetchForDownload(QString, QString)));
+    connect(m_downloads, SIGNAL(log(QString)), this, SLOT(downloadsLog(QString)));
 }
 
 Browser::~Browser()
@@ -605,7 +607,33 @@ int Browser::evaluate(const QString &expression, const QString &purpose)
 
 void Browser::replied(int id, const QString &method, const QVariantMap &result)
 {
-    if (method == "Runtime.evaluate") {
+    if (m_saves.contains(id)) {
+        // "Save image": the engine's answer, then the data a part at a time.
+        const QStringList save = m_saves.take(id);
+        if (method == "Network.loadNetworkResource") {
+            const QVariantMap resource = result.value("resource").toMap();
+            const int status = resource.value("httpStatusCode").toInt();
+            if (resource.value("success").toBool() && status < 400)
+                readSaved(save.at(0), resource.value("stream").toString());
+            else
+                m_downloads->finish(save.at(0), status >= 400 ? QString("HTTP %1").arg(status)
+                                                              : resource.value("netErrorName").toString());
+            return;
+        }
+        const QByteArray data = result.value("base64Encoded").toBool()
+            ? QByteArray::fromBase64(result.value("data").toByteArray())
+            : result.value("data").toString().toUtf8();
+        const bool eof = result.value("eof").toBool();
+        if (m_downloads->append(save.at(0), data) && !eof) {
+            readSaved(save.at(0), save.at(1));
+            return;
+        }
+        QVariantMap params;
+        params["handle"] = save.at(1);
+        m_devtools->call("IO.close", params);
+        if (eof)
+            m_downloads->finish(save.at(0), QString());
+    } else if (method == "Runtime.evaluate") {
         const QString purpose = m_evaluations.take(id);
         const QVariant value = result.value("result").toMap().value("value");
         if (purpose == "copy") {
@@ -659,6 +687,8 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
 void Browser::failed(int id, const QString &method, const QString &message)
 {
     m_evaluations.remove(id);
+    if (m_saves.contains(id))
+        m_downloads->finish(m_saves.take(id).at(0), message);
     log(QString("DevTools refused %1: %2").arg(method, message));
     if (method == "Page.navigate")
         emit this->message(message);
@@ -980,6 +1010,36 @@ QVariantList Browser::suggest(const QString &text) const
 }
 
 // ---- the page's window and icon ------------------------------------------
+
+// "Save image": Qt here speaks only TLS 1.0, so the engine loads the address
+// as the page would and hands over a stream to read.
+void Browser::fetchForDownload(const QString &id, const QString &url)
+{
+    QVariantMap options;
+    options["disableCache"] = false;
+    options["includeCredentials"] = true;
+    QVariantMap params;
+    params["frameId"] = m_mainFrameId;
+    params["url"] = url;
+    params["options"] = options;
+    const int call = m_devtools->call("Network.loadNetworkResource", params);
+    if (call < 0)
+        m_downloads->finish(id, tr("the engine is not running"));
+    else
+        m_saves.insert(call, QStringList() << id << QString());
+}
+
+void Browser::readSaved(const QString &id, const QString &stream)
+{
+    QVariantMap params;
+    params["handle"] = stream;
+    params["size"] = 262144;
+    const int call = m_devtools->call("IO.read", params);
+    if (call < 0)
+        m_downloads->finish(id, tr("the engine stopped"));
+    else
+        m_saves.insert(call, QStringList() << id << stream);
+}
 
 void Browser::setBarHeights(int title, int slim, int full)
 {

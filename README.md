@@ -47,6 +47,8 @@ bar and Cascades clips it where the bars lie over it.
   while one is focused), and the hardware keyboard types into the page.
 - **Downloads**: pages' downloads and saved images go to the shared
   Downloads folder; the Downloads sheet shows progress and opens files.
+  Saved images are loaded by the engine (`Network.loadNetworkResource`):
+  Qt on BB10 speaks only TLS 1.0, which today's sites refuse.
 - **Mobile view** on by default: the engine is a desktop content_shell that
   only sent a mobile user agent, so pages ignored their mobile viewport and
   saw a mouse. DevTools' mobile device mode (`Emulation.setDeviceMetricsOverride`
@@ -122,8 +124,8 @@ toolchain gap, and a milestone plan.
   the engine's extra windows have no UI here. Page event listeners only run
   with JavaScript on, so long-press menus, selection and find need it.
 - `src/downloads.cpp` sets the engine's download folder through the browser
-  target (`Browser.setDownloadBehavior`), and saves images itself with Qt,
-  trusting the engine's root certificates.
+  target (`Browser.setDownloadBehavior`), and writes saved images, which the
+  engine loads for it.
 - `src/history.cpp` keeps the visited pages in `history.json`.
 - The engine's window is drawn above the Cascades window, so it is hidden
   while the menu, a sheet, a dialog or the suggestions are showing. Under
