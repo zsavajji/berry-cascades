@@ -4,3 +4,4 @@ assets/.assets.index
 *.bar
 *.tar.gz
 *.bundle
+debug/

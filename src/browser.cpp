@@ -248,9 +248,24 @@ QString Browser::logPath() const
     return QDir::homePath() + "/engine.log";
 }
 
+// The log keeps its newer half past kMaxLogBytes. The engine appends to it
+// for as long as it runs, so its writes go on at the new end.
+static void trimLog(const QString &path)
+{
+    QFile file(path);
+    if (file.size() <= kMaxLogBytes || !file.open(QIODevice::ReadOnly))
+        return;
+    file.seek(file.size() - kMaxLogBytes / 2);
+    const QByteArray tail = file.readAll();
+    file.close();
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        file.write(tail);
+}
+
 // The app's own lines in the engine log, between the engine's.
 void Browser::log(const QString &line) const
 {
+    trimLog(logPath());
     QFile file(logPath());
     if (file.open(QIODevice::WriteOnly | QIODevice::Append))
         file.write(QString("[chromeberry %1] %2\n")
@@ -320,8 +335,7 @@ void Browser::launch()
         env.insert("QNX_NAV_DEBUG", "1");
 
     const QString logFile = logPath();
-    if (QFileInfo(logFile).size() > kMaxLogBytes)
-        QFile::remove(logFile);
+    trimLog(logFile);
 
     QString startUrl = m_pendingUrl;
     if (startUrl.isEmpty())
