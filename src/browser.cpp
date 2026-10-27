@@ -1640,9 +1640,9 @@ QVariant Browser::setting(const QString &key) const
         return m_settings.value(key, 0).toInt();
     if (key == "heap") {
         // V8's old-space cap in MB. Above 512 the 32-bit address space,
-        // shared with graphics and network, runs out (Berry's "risky").
+        // shared with graphics and network, can run out (Berry's "risky").
         const int heap = m_settings.value(key, 256).toInt();
-        return heap == 384 || heap == 512 ? heap : 256;
+        return heap == 384 || heap == 512 || heap == 768 || heap == 1024 ? heap : 256;
     }
     // Times page pixels per pixel the finger slides on the touch keyboard (on
     // a Passport 1 was about half the speed it should be), and times 4 CSS

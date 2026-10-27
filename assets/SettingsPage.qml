@@ -232,12 +232,14 @@ Page {
                 Option { text: qsTr("256 MB (default)"); value: 256 }
                 Option { text: "384 MB"; value: 384 }
                 Option { text: "512 MB"; value: 512 }
+                Option { text: "768 MB"; value: 768 }
+                Option { text: "1 GB"; value: 1024 }
                 id: heapDropDown
                 onCreationCompleted: selectByValue(heapDropDown, browser.setting("heap"))
                 onSelectedValueChanged: browser.setSetting("heap", selectedValue)
             }
             Label {
-                text: qsTr("More helps web apps that run out of memory, but garbage collection pauses grow with it.")
+                text: qsTr("More helps web apps that run out of memory, but garbage collection pauses grow with it. Above 512 MB the engine can run out of address space and stop.")
                 multiline: true
                 textStyle.base: SystemDefaults.TextStyles.SubtitleText
             }

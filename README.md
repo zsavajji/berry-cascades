@@ -85,7 +85,7 @@ bar and Cascades clips it where the bars lie over it.
   JavaScript, images, the engine's ad and tracker blocker (its switch file,
   `misc/berry-adblock.disable`, is shared with Berry Browser), dark pages,
   rendering resolution (sharpness only: pages keep their size), frame rate,
-  JavaScript memory (256/384/512 MB),
+  JavaScript memory (256 MB to 1 GB),
   HTTPS certificate checks, clear history/cache/cookies, two engine-window
   corrections (below), and Performance: Berry Browser's engine defaults,
   each one a choice (GPU drawing, painting threads, low-end mode, the 256 MB
