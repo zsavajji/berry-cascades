@@ -27,9 +27,10 @@ Page {
     property real rootWidth: 720
     property bool menuOpen: false
     property bool dialogOpen: false
-    // The menu's keys are on only while it is on screen: its actions stay on
-    // the page after it closes, and their keys would take the typing.
-    property bool menuShown: actionMenuVisualState != ActionMenuVisualState.Hidden
+    // The menu's keys are on only while it is open, and from before it shows,
+    // or it lists none: its actions stay on the page after it closes, and
+    // their keys would take the typing.
+    property bool menuKeys: menuOpen || dialogOpen
     property string pending          // "menu" or "dialog" while a snapshot is taken
     property bool snapshotShown: false   // browser.snapshotImage is the page
     property bool finding: false
@@ -690,12 +691,12 @@ Page {
 
     attachedObjects: [
         // The ⋮ menu's actions (openMenu) and the long-press menu's (showMenu).
-        // Their keys work while their menu is shown (menuShown), where the menu
+        // Their keys work while their menu is open (menuKeys), where the menu
         // shows them: on the page a key the page's text box should have got
         // (one the page script did not report focused) would go Home instead.
         ActionItem {
             id: actForward
-            shortcuts: Shortcut { key: "N"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "N"; enabled: page.menuKeys }
             title: qsTr("Forward")
             imageSource: "asset:///images/forward.png"
             enabled: browser.canGoForward
@@ -703,14 +704,14 @@ Page {
         },
         ActionItem {
             id: actHome
-            shortcuts: Shortcut { key: "H"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "H"; enabled: page.menuKeys }
             title: qsTr("Home")
             imageSource: "asset:///images/home.png"
             onTriggered: browser.home()
         },
         ActionItem {
             id: actAddBookmark
-            shortcuts: Shortcut { key: "A"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "A"; enabled: page.menuKeys }
             title: qsTr("Add to bookmarks")
             imageSource: "asset:///images/bookmark_add.png"
             enabled: !browser.bookmarked && !page.startPage
@@ -718,21 +719,21 @@ Page {
         },
         ActionItem {
             id: actBookmarks
-            shortcuts: Shortcut { key: "K"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "K"; enabled: page.menuKeys }
             title: qsTr("Bookmarks")
             imageSource: "asset:///images/bookmarks.png"
             onTriggered: bookmarksSheet.open()
         },
         ActionItem {
             id: actHistory
-            shortcuts: Shortcut { key: "Y"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "Y"; enabled: page.menuKeys }
             title: qsTr("History")
             imageSource: "asset:///images/history.png"
             onTriggered: historySheet.open()
         },
         ActionItem {
             id: actFind
-            shortcuts: Shortcut { key: "F"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "F"; enabled: page.menuKeys }
             title: qsTr("Find in page")
             imageSource: "asset:///images/search.png"
             onTriggered: {
@@ -742,105 +743,105 @@ Page {
         },
         ActionItem {
             id: actSelect
-            shortcuts: Shortcut { key: "L"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "L"; enabled: page.menuKeys }
             title: qsTr("Select text")
             imageSource: "asset:///images/selectall.png"
             onTriggered: browser.selectAll()
         },
         ActionItem {
             id: actPaste
-            shortcuts: Shortcut { key: "V"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "V"; enabled: page.menuKeys }
             title: qsTr("Paste")
             imageSource: "asset:///images/paste.png"
             onTriggered: browser.paste()
         },
         ActionItem {
             id: actShare
-            shortcuts: Shortcut { key: "S"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "S"; enabled: page.menuKeys }
             title: qsTr("Share")
             imageSource: "asset:///images/share.png"
             onTriggered: page.share(browser.url)
         },
         ActionItem {
             id: actCopyUrl
-            shortcuts: Shortcut { key: "C"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "C"; enabled: page.menuKeys }
             title: qsTr("Copy link")
             imageSource: "asset:///images/copy.png"
             onTriggered: browser.copyUrl()
         },
         ActionItem {
             id: actDownloads
-            shortcuts: Shortcut { key: "D"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "D"; enabled: page.menuKeys }
             title: qsTr("Downloads")
             imageSource: "asset:///images/downloads.png"
             onTriggered: downloadsSheet.open()
         },
         ActionItem {
             id: actSettings
-            shortcuts: Shortcut { key: "E"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "E"; enabled: page.menuKeys }
             title: qsTr("Settings")
             imageSource: "asset:///images/settings.png"
             onTriggered: settingsSheet.open()
         },
         ActionItem {
             id: actRestart
-            shortcuts: Shortcut { key: "R"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "R"; enabled: page.menuKeys }
             title: qsTr("Restart engine")
             imageSource: "asset:///images/restart.png"
             onTriggered: browser.restartEngine()
         },
         ActionItem {
             id: actOpenLink
-            shortcuts: Shortcut { key: "O"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "O"; enabled: page.menuKeys }
             title: qsTr("Open")
             imageSource: "asset:///images/forward.png"
             onTriggered: browser.open(page.menuLink)
         },
         ActionItem {
             id: actCopyLink
-            shortcuts: Shortcut { key: "C"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "C"; enabled: page.menuKeys }
             title: qsTr("Copy link")
             imageSource: "asset:///images/copy.png"
             onTriggered: browser.copyText(page.menuLink)
         },
         ActionItem {
             id: actShareLink
-            shortcuts: Shortcut { key: "S"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "S"; enabled: page.menuKeys }
             title: qsTr("Share link")
             imageSource: "asset:///images/share.png"
             onTriggered: page.share(page.menuLink)
         },
         ActionItem {
             id: actCopyLinkText
-            shortcuts: Shortcut { key: "T"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "T"; enabled: page.menuKeys }
             title: qsTr("Copy link text")
             imageSource: "asset:///images/copy.png"
             onTriggered: browser.copyText(page.menuText)
         },
         ActionItem {
             id: actOpenImage
-            shortcuts: Shortcut { key: "I"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "I"; enabled: page.menuKeys }
             title: qsTr("Open image")
             imageSource: "asset:///images/forward.png"
             onTriggered: browser.open(page.menuImage)
         },
         ActionItem {
             id: actSaveImage
-            shortcuts: Shortcut { key: "D"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "D"; enabled: page.menuKeys }
             title: qsTr("Save image")
             imageSource: "asset:///images/downloads.png"
             onTriggered: downloads.save(page.menuImage)
         },
         ActionItem {
             id: actCopyImage
-            shortcuts: Shortcut { key: "A"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "A"; enabled: page.menuKeys }
             title: qsTr("Copy image address")
             imageSource: "asset:///images/copy.png"
             onTriggered: browser.copyText(page.menuImage)
         },
         ActionItem {
             id: actShareImage
-            shortcuts: Shortcut { key: "S"; enabled: page.menuShown }
+            shortcuts: Shortcut { key: "S"; enabled: page.menuKeys }
             title: qsTr("Share image address")
             imageSource: "asset:///images/share.png"
             onTriggered: page.share(page.menuImage)
