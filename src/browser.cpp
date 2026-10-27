@@ -90,6 +90,37 @@ bool isEngineSetting(const QString &key)
         || key == "quic" || key == "http1" || key == "rasterThreads";
 }
 
+// Emulation.setUserAgentOverride for a mobile Chrome on Android. The engine
+// sends the mobile user agent, but its client hints (Sec-CH-UA-*,
+// navigator.userAgentData) are content_shell's: brand "content_shell",
+// platform "Unknown", not mobile, and sites that read them (facebook.com)
+// serve their desktop pages. Chromium 120, the engine's version: change
+// with the engine.
+QVariantMap mobileAgent()
+{
+    QVariantList brands;
+    QVariantMap brand;
+    brand["brand"] = QString("Chromium");
+    brand["version"] = QString("120");
+    brands << brand;
+    brand["brand"] = QString("Not_A Brand");
+    brand["version"] = QString("8");
+    brands << brand;
+    QVariantMap hints;
+    hints["brands"] = brands;
+    hints["platform"] = QString("Android");
+    hints["platformVersion"] = QString("10.0.0");
+    hints["architecture"] = QString("");
+    hints["model"] = QString("");
+    hints["mobile"] = true;
+    QVariantMap params;
+    params["userAgent"] = QString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+                                  "(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36");
+    params["platform"] = QString("Linux armv7l");
+    params["userAgentMetadata"] = hints;
+    return params;
+}
+
 QString jsString(const QString &s)
 {
     QString out = s;
@@ -587,6 +618,10 @@ void Browser::attached()
     script["source"] = m_pageScript;
     m_devtools->call("Page.addScriptToEvaluateOnNewDocument", script);
     evaluate(m_pageScript, QString());
+    evaluate("'engine user agent: ' + navigator.userAgent + ' ' + JSON.stringify(navigator.userAgentData)",
+             "log");
+    if (!setting("desktop").toBool())
+        m_devtools->call("Emulation.setUserAgentOverride", mobileAgent());
     m_devtools->call("Page.getFrameTree");
     applyMobileView();
     applySwipe();
@@ -664,6 +699,8 @@ void Browser::replied(int id, const QString &method, const QVariantMap &result)
         } else if (purpose == "find") {
             const QVariantMap found = value.toMap();
             emit findResult(found.value("found").toBool(), found.value("count").toInt());
+        } else if (purpose == "log") {
+            log(value.toString());
         }
     } else if (method == "Page.captureScreenshot") {
         if (id != m_snapshotId)

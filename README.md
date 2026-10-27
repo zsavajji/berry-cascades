@@ -69,6 +69,9 @@ bar and Cascades clips it where the bars lie over it.
   saw a mouse. DevTools' mobile device mode (`Emulation.setDeviceMetricsOverride`
   with `mobile: true`, plus touch emulation) makes it lay pages out as
   mobile Chrome does. Off with *Request desktop sites*, or in Settings.
+  Its client hints said a desktop "content_shell" too, so sites that read
+  them (facebook.com) served desktop pages: unless *Request desktop sites*
+  is on, they are mobile Chrome's on Android (`Emulation.setUserAgentOverride`).
 - **Swipe navigation** off by default: a sideways swipe at the edge of a
   page does not go back or forward. Settings can turn it on. It is
   Chromium's overscroll history navigation, which has no switch in this
