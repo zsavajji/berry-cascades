@@ -248,7 +248,8 @@ its newest megabyte.
   in Settings, requests go straight out.
 - **Size changes.** The engine cannot resize its window, so a new web view
   size (e.g. the action bar's) applies at the next engine restart.
-  The keyboard covers the page instead of shrinking it.
+  The keyboard covers the page instead of shrinking it; the bar rises
+  above it while the address or find is typed.
 - **Nothing over the page.** The engine's window has to lie above the
   Cascades window: below it (a negative Z-order, as `ForeignWindowControl`
   is meant to be used) the page shows through but Cascades gets its

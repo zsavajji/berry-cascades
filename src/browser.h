@@ -12,6 +12,8 @@
 #include <QTimer>
 #include <QVariant>
 
+#include <bb/AbstractBpsEventHandler>
+
 #include "devtools.h"
 
 namespace bb {
@@ -33,7 +35,7 @@ class History;
 // the DevTools protocol (navigation, history, keys, the page script in
 // assets/page.js). Also keeps the bookmarks, the settings and the last
 // page, which the next start opens.
-class Browser : public QObject
+class Browser : public QObject, public bb::AbstractBpsEventHandler
 {
     Q_OBJECT
     Q_PROPERTY(QString url READ url NOTIFY pageChanged)
@@ -57,6 +59,8 @@ class Browser : public QObject
     // How far the full bar and the title strip are in, 0 (out) to 1 (in).
     Q_PROPERTY(double barsIn READ barsIn NOTIFY barsMoved)
     Q_PROPERTY(double titleIn READ titleIn NOTIFY barsMoved)
+    // The on-screen keyboard's height in pixels while it shows, else 0.
+    Q_PROPERTY(int keyboardHeight READ keyboardHeight NOTIFY keyboardHeightChanged)
 
 public:
     Browser(History *history, Downloads *downloads, QObject *parent = 0);
@@ -81,6 +85,7 @@ public:
     QVariant snapshotImage() const { return m_snapshotImage; }
     double barsIn() const { return m_barsIn; }
     double titleIn() const { return m_titleIn; }
+    int keyboardHeight() const { return m_keyboardHeight; }
 
     // Starts the engine once the web view's size in pixels is known.
     Q_INVOKABLE void startEngine(int width, int height);
@@ -136,6 +141,9 @@ public:
     // window in step, so they show where it no longer is.
     Q_INVOKABLE void setBarHeights(int title, int slim, int full);
     Q_INVOKABLE void showBars(QObject *view, bool bars, bool title, bool animate);
+    // The bars raised by this many pixels (above the on-screen keyboard),
+    // the page's window clipped to match.
+    Q_INVOKABLE void liftBars(int pixels);
 
     // The engine's output and the app's own lines about it.
     Q_INVOKABLE QString logPath() const;
@@ -168,6 +176,7 @@ signals:
     void iconChanged();
     void barsMoved();
     void swipedDown();
+    void keyboardHeightChanged();
 
 private slots:
     void launchIfIdle();
@@ -212,6 +221,7 @@ private:
     QString fixUp(const QString &input) const;
     QString engineDir() const;
     void log(const QString &line) const;
+    void event(bps_event_t *event);
     QStringList engineArguments(const QString &startUrl) const;
 
     History *m_history;
@@ -254,10 +264,12 @@ private:
     bb::UIToolkitSupport *m_toolkit;
 
     QPointer<QObject> m_pageView;
-    int m_titleHeight, m_slimHeight, m_fullHeight;
+    int m_titleHeight, m_slimHeight, m_fullHeight, m_barsLift;
     double m_barsIn, m_titleIn, m_barsFrom, m_titleFrom, m_barsTo, m_titleTo;
     QElapsedTimer m_barsClock;
     QTimer m_barsTimer;
+    bool m_keyboardShown;
+    int m_keyboardHeight;
 
     // The content blocklist's domains (blocklist.txt, tools/fetch-blocklist.py).
     QSet<QByteArray> m_blocklist;

@@ -21,6 +21,7 @@
 #include <bb/ImageData>
 #include <bb/UIToolkitSupport>
 #include <bb/utility/ImageConverter>
+#include <bps/virtualkeyboard.h>
 #include <errno.h>
 #include <screen/screen.h>
 
@@ -154,14 +155,19 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     , m_titleHeight(0)
     , m_slimHeight(0)
     , m_fullHeight(0)
+    , m_barsLift(0)
     , m_barsIn(1)
     , m_titleIn(0)
     , m_barsFrom(1)
     , m_titleFrom(0)
     , m_barsTo(1)
     , m_titleTo(0)
+    , m_keyboardShown(false)
+    , m_keyboardHeight(0)
     , m_iconCount(0)
 {
+    subscribe(virtualkeyboard_get_domain());
+    virtualkeyboard_request_events(0);
     QFile script(QCoreApplication::applicationDirPath() + "/assets/page.js");
     if (script.open(QIODevice::ReadOnly))
         m_pageScript = QString::fromUtf8(script.readAll());
@@ -1178,6 +1184,12 @@ void Browser::showBars(QObject *view, bool bars, bool title, bool animate)
     stepBars();
 }
 
+void Browser::liftBars(int pixels)
+{
+    m_barsLift = pixels;
+    stepBars();
+}
+
 void Browser::stepBars()
 {
     const int kSlideMs = 200;
@@ -1191,7 +1203,28 @@ void Browser::stepBars()
     // The full bar slides by its own height and covers the slim bar first;
     // the page is cut where it rises above the slim bar.
     setPageClip(qRound(m_titleIn * m_titleHeight),
-                qMax(0, qRound(m_barsIn * m_fullHeight) - m_slimHeight));
+                qMax(0, qRound(m_barsIn * m_fullHeight) - m_slimHeight) + m_barsLift);
+}
+
+// The on-screen keyboard (a touch-only phone's, the Passport's top row):
+// shown, hidden, or a new height.
+void Browser::event(bps_event_t *event)
+{
+    if (bps_event_get_domain(event) != virtualkeyboard_get_domain())
+        return;
+    const int code = bps_event_get_code(event);
+    if (code == VIRTUALKEYBOARD_EVENT_VISIBLE)
+        m_keyboardShown = true;
+    else if (code == VIRTUALKEYBOARD_EVENT_HIDDEN)
+        m_keyboardShown = false;
+    int height = 0;
+    if (m_keyboardShown)
+        virtualkeyboard_get_height(&height);
+    if (height == m_keyboardHeight)
+        return;
+    m_keyboardHeight = height;
+    log(QString("on-screen keyboard: %1 px").arg(height));
+    emit keyboardHeightChanged();
 }
 
 void Browser::setPageClip(int top, int bottom)

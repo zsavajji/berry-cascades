@@ -76,6 +76,10 @@ Page {
     // page's window in step.
     onBarsShownChanged: browser.showBars(webView, barsShown, titleIn, true)
     onTitleInChanged: browser.showBars(webView, barsShown, titleIn, true)
+    // While the address or find types, the bars sit above the on-screen
+    // keyboard (the Passport's top row, a touch-only phone's keyboard).
+    property int barsLift: (address.focused || findField.focused) ? browser.keyboardHeight : 0
+    onBarsLiftChanged: browser.liftBars(barsLift)
     // The page comes back when the menu has gone, however it went.
     onActionMenuVisualStateChanged: {
         if (actionMenuVisualState == ActionMenuVisualState.Hidden)
@@ -243,7 +247,7 @@ Page {
                     visible: page.showSuggestions
                     horizontalAlignment: HorizontalAlignment.Fill
                     verticalAlignment: VerticalAlignment.Fill
-                    bottomPadding: page.fullHeight - page.slimHeight
+                    bottomPadding: page.fullHeight - page.slimHeight + page.barsLift
                     background: Color.create("#121212")
                     ListView {
                         dataModel: ArrayDataModel {
@@ -358,7 +362,7 @@ Page {
         // The page's window reaches down to the slim bar; while these show,
         // its bottom is clipped (Browser::showBars) so they show through.
         Container {
-            translationY: (1 - browser.barsIn) * page.fullHeight
+            translationY: (1 - browser.barsIn) * page.fullHeight - page.barsLift
             attachedObjects: [
                 ImplicitAnimationController {
                     propertyName: "translationY"
