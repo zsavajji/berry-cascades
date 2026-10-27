@@ -8,6 +8,7 @@
 #include <QProcessEnvironment>
 #include <QThread>
 #include <QUrl>
+#include <QtCore/qmath.h>
 
 #include <bb/cascades/Application>
 #include <bb/cascades/ForeignWindowControl>
@@ -19,6 +20,7 @@
 #include <bb/system/InvokeRequest>
 
 #include <bb/ImageData>
+#include <bb/device/HardwareInfo>
 #include <bb/UIToolkitSupport>
 #include <bb/utility/ImageConverter>
 #include <bps/virtualkeyboard.h>
@@ -41,6 +43,16 @@ const int kSlowStartProbes = 120;      // 60 s
 const int kVerySlowStartProbes = 360;  // 3 min
 const int kWatchMs = 3000;
 const qint64 kMaxLogBytes = 2 * 1024 * 1024;
+
+// The glide after a trackpad or touch-keyboard swipe: its speed decays with
+// this time constant, so a flick travels about speed × kGlideMs further (a
+// guess, to tune on a Q20 and a Passport). A finger that rested longer than
+// kStillMs before lifting leaves no glide; moves further apart than
+// kSwipeGapMs belong to separate swipes.
+const double kGlideMs = 250;
+const qint64 kStillMs = 80;
+const qint64 kSwipeGapMs = 100;
+const double kMinGlide = 0.05;  // wheel pixels per ms
 
 // Fraction of the web view's pixels the engine renders, before the window
 // scales it up; Chromium on a Krait CPU needs the help. Indexed by the
@@ -164,6 +176,8 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
     , m_titleTo(0)
     , m_keyboardShown(false)
     , m_keyboardHeight(0)
+    , m_scrollVX(0)
+    , m_scrollVY(0)
     , m_iconCount(0)
 {
     subscribe(virtualkeyboard_get_domain());
@@ -183,6 +197,8 @@ Browser::Browser(History *history, Downloads *downloads, QObject *parent)
 
     m_barsTimer.setInterval(16);
     connect(&m_barsTimer, SIGNAL(timeout()), this, SLOT(stepBars()));
+    m_glideTimer.setInterval(16);
+    connect(&m_glideTimer, SIGNAL(timeout()), this, SLOT(glide()));
     connect(&m_probe, SIGNAL(timeout()), this, SLOT(probeEngine()));
     m_historyTimer.setSingleShot(true);
     m_historyTimer.setInterval(150);
@@ -829,6 +845,7 @@ void Browser::pageEvent(const QVariantMap &event)
 {
     const QString type = event.value("t").toString();
     if (type == "touch") {
+        m_glideTimer.stop();  // a finger on the page stops a glide
         emit pageTouched();
     } else if (type == "menu") {
         emit contextMenu(event.value("link").toString(), event.value("text").toString(),
@@ -862,6 +879,7 @@ void Browser::setLoading(bool loading)
         return;
     m_loading = loading;
     if (loading) {
+        m_glideTimer.stop();  // the next page starts still
         setProgress(0.08);
         m_progressTimer.start();
     } else {
@@ -1378,19 +1396,96 @@ void Browser::paste()
 
 // A mouse wheel over the middle of the page: the engine scrolls it off its
 // main thread, which stalls for seconds on heavy pages.
-void Browser::scrollPage(double dx, double dy)
+void Browser::scrollPage(double dx, double dy, bool pixels)
 {
-    if (!m_devtools->isAttached() || m_width <= 0)
+    const QString input = pixels ? "keyboardScroll" : "trackpadScroll";
+    if (!m_devtools->isAttached() || m_width <= 0 || !setting(input).toBool())
         return;
-    const double kWheelPerUnit = 4;  // a guess, to tune on a Q20 or a Passport
+    // The Q20 has not been tried: the log says whether its swipes arrive.
+    static bool logged[2];
+    if (!logged[pixels]) {
+        logged[pixels] = true;
+        log(pixels ? "touch keyboard scrolls the page" : "trackpad scrolls the page");
+    }
+    const double kWheelPerUnit = 4;  // too fast at 1× on a Q20
+    const double css = kRenderScales[defaultQuality(m_width, m_height)];  // CSS px per window px
+    const double scale = setting(input + "Speed").toDouble() * (pixels ? css : kWheelPerUnit);
+    const double wheelX = dx * scale;
+    const double wheelY = dy * scale;
+
+    // The swipe's speed, for the glide after it (endScroll), smoothed over its
+    // last moves. A pause, or a glide still running, starts a new swipe.
+    const qint64 ms = m_scrollClock.isValid() ? m_scrollClock.restart() : -1;
+    if (ms < 0)
+        m_scrollClock.start();
+    if (ms < 0 || ms > kSwipeGapMs || m_glideTimer.isActive()) {
+        m_scrollVX = 0;
+        m_scrollVY = 0;
+    } else {
+        const double t = qMax<qint64>(ms, 4);
+        m_scrollVX = 0.6 * wheelX / t + 0.4 * m_scrollVX;
+        m_scrollVY = 0.6 * wheelY / t + 0.4 * m_scrollVY;
+    }
+    m_glideTimer.stop();
+    wheel(wheelX, wheelY);
+}
+
+void Browser::endScroll()
+{
+    if (!m_scrollClock.isValid() || m_scrollClock.elapsed() > kStillMs
+            || qAbs(m_scrollVX) + qAbs(m_scrollVY) < kMinGlide)
+        return;
+    // Neither phone has been tried: the log says whether the lift arrives.
+    static bool logged;
+    if (!logged) {
+        logged = true;
+        log(QString("scroll glides on at %1, %2 px/ms").arg(m_scrollVX).arg(m_scrollVY));
+    }
+    m_scrollClock.restart();
+    m_glideTimer.start();
+}
+
+// One step of the glide. The speed decays exponentially, so each step moves
+// the distance it covers in that time: speed × kGlideMs × (1 - what is left).
+void Browser::glide()
+{
+    if (!m_devtools->isAttached()) {
+        m_glideTimer.stop();
+        return;
+    }
+    const double ms = qMax<qint64>(1, m_scrollClock.restart());
+    const double left = qExp(-ms / kGlideMs);
+    wheel(m_scrollVX * kGlideMs * (1 - left), m_scrollVY * kGlideMs * (1 - left));
+    m_scrollVX *= left;
+    m_scrollVY *= left;
+    if (qAbs(m_scrollVX) + qAbs(m_scrollVY) < kMinGlide)
+        m_glideTimer.stop();
+}
+
+void Browser::wheel(double dx, double dy)
+{
     const double css = kRenderScales[defaultQuality(m_width, m_height)];  // CSS px per window px
     QVariantMap params;
     params["type"] = QString("mouseWheel");
     params["x"] = m_width * css / 2;
     params["y"] = m_height * css / 2;
-    params["deltaX"] = dx * kWheelPerUnit;
-    params["deltaY"] = dy * kWheelPerUnit;
+    params["deltaX"] = dx;
+    params["deltaY"] = dy;
     m_devtools->call("Input.dispatchMouseEvent", params);
+}
+
+bool Browser::hasTrackpad() const
+{
+    return bb::device::HardwareInfo().isTrackpadDevice();
+}
+
+void Browser::noteTouchKeyboard()
+{
+    if (hasTouchKeyboard())
+        return;
+    m_settings.setValue("touchKeyboard", true);
+    log("touch keyboard found");
+    emit hasTouchKeyboardChanged();
 }
 
 void Browser::selectAll()
@@ -1549,6 +1644,13 @@ QVariant Browser::setting(const QString &key) const
         const int heap = m_settings.value(key, 256).toInt();
         return heap == 384 || heap == 512 ? heap : 256;
     }
+    // Times page pixels per pixel the finger slides on the touch keyboard (on
+    // a Passport 1 was about half the speed it should be), and times 4 CSS
+    // pixels per trackpad unit (on a Q20 1 is too fast).
+    if (key == "keyboardScrollSpeed")
+        return qBound(0.5, m_settings.value(key, 2.0).toDouble(), 3.0);
+    if (key == "trackpadScrollSpeed")
+        return qBound(0.25, m_settings.value(key, 0.5).toDouble(), 1.5);
     if (key == "adblock")
         return !QFile::exists(kAdblockOff);
     if (key == "desktop" || key == "verifyCerts" || key == "swipeNavigation" || key == "wasmLite"
@@ -1557,7 +1659,7 @@ QVariant Browser::setting(const QString &key) const
         return m_settings.value(key, false).toBool();
     if (key == "javascript" || key == "images" || key == "suggestions"
         || key == "mobileView" || key == "gpu" || key == "lowEnd" || key == "diskCache"
-        || key == "serviceWorkers" || key == "privacyCuts")
+        || key == "serviceWorkers" || key == "privacyCuts" || key == "keyboardScroll" || key == "trackpadScroll")
         return m_settings.value(key, true).toBool();
     if (key == "search")
         return QString(searchEngine(m_settings.value(key, "duckduckgo").toString()).key);

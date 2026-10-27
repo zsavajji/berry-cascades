@@ -57,7 +57,8 @@ bar and Cascades clips it where the bars lie over it.
   key's accents and, on touch-only phones, the on-screen keyboard all work.
   Outside text boxes, keys go to the page as key events (Space scrolls).
 - **Trackpad and keyboard swipes** (Q20, Passport) scroll the page, as a
-  mouse wheel the engine scrolls off its main thread.
+  mouse wheel the engine scrolls off its main thread, and the page glides on
+  for a moment after the finger lifts.
 - **Downloads**: pages' downloads and saved images go to the shared
   Downloads folder; the Downloads sheet shows progress and opens files.
   Saved images are loaded by the engine (`Network.loadNetworkResource`):
@@ -78,7 +79,9 @@ bar and Cascades clips it where the bars lie over it.
   engine build, so the page script sets `overscroll-behavior-x: none` on the
   page's root, which Chromium honours; Browser re-applies it after every
   load so it holds with JavaScript off too.
-- **Settings**: search engine, home page, suggestions, swipe navigation, desktop sites,
+- **Settings**: search engine, home page, suggestions, swipe navigation,
+  keyboard or trackpad scrolling and its speed (shown on a Passport or a
+  Classic), desktop sites,
   JavaScript, images, the engine's ad and tracker blocker (its switch file,
   `misc/berry-adblock.disable`, is shared with Berry Browser), dark pages,
   rendering resolution (sharpness only: pages keep their size), frame rate,
@@ -206,9 +209,10 @@ The app, the shim and the package build cleanly with the 10.3.1 SDK
 (Qt 6's `qmllint`, which knows QML but not Cascades' types). It runs on a
 BlackBerry Q10 with OS 10.3.3: the page, taps, the bars, menus, selection,
 downloads, the blocklist and the keyboard (symbol key included) are tried
-there. Not tried yet: the trackpad (Q20), the touch keyboard's swipes
-(Passport) and the on-screen keyboard of a touch-only phone (Z30); the
-trackpad's scroll speed is a guess (`kWheelPerUnit` in `src/browser.cpp`).
+there. A Q20's owner found the trackpad's scroll too fast at 1× (its
+slider goes from 0.25× to 1.5×, 0.5× at first). Not tried yet: the touch
+keyboard's swipes (Passport) and the on-screen keyboard of a touch-only
+phone (Z30).
 
 If the page is turned or taps land in the wrong place on another phone,
 Settings, Engine window has Rotation and Tap mapping (*Source*, *Window*,

@@ -61,6 +61,11 @@ class Browser : public QObject, public bb::AbstractBpsEventHandler
     Q_PROPERTY(double titleIn READ titleIn NOTIFY barsMoved)
     // The on-screen keyboard's height in pixels while it shows, else 0.
     Q_PROPERTY(int keyboardHeight READ keyboardHeight NOTIFY keyboardHeightChanged)
+    // The phone's scrolling input, for the settings that go with it: a
+    // trackpad (Classic) by HardwareInfo; a touch keyboard (Passport) once
+    // it has reported a touch, since no API tells before.
+    Q_PROPERTY(bool hasTrackpad READ hasTrackpad CONSTANT)
+    Q_PROPERTY(bool hasTouchKeyboard READ hasTouchKeyboard NOTIFY hasTouchKeyboardChanged)
 
 public:
     Browser(History *history, Downloads *downloads, QObject *parent = 0);
@@ -86,6 +91,8 @@ public:
     double barsIn() const { return m_barsIn; }
     double titleIn() const { return m_titleIn; }
     int keyboardHeight() const { return m_keyboardHeight; }
+    bool hasTrackpad() const;
+    bool hasTouchKeyboard() const { return m_settings.value("touchKeyboard", false).toBool(); }
 
     // Starts the engine once the web view's size in pixels is known.
     Q_INVOKABLE void startEngine(int width, int height);
@@ -111,8 +118,14 @@ public:
     Q_INVOKABLE void typeText(const QString &text);
     // Clipboard text into the focused field of the page.
     Q_INVOKABLE void paste();
-    // A swipe on the trackpad (Q20) or the touch keyboard (Passport), in its units.
-    Q_INVOKABLE void scrollPage(double dx, double dy);
+    // A swipe on the trackpad (Q20), in its units, or on the touch keyboard
+    // (Passport), in screen pixels. No default argument: moc would add a
+    // two-argument clone, and QML1 mis-picked between such twins on Harmattan.
+    Q_INVOKABLE void scrollPage(double dx, double dy, bool pixels);
+    // The finger left the trackpad or the touch keyboard: the page glides on
+    // and slows down, as after a flick on the screen.
+    Q_INVOKABLE void endScroll();
+    Q_INVOKABLE void noteTouchKeyboard();
 
     Q_INVOKABLE void selectAll();
     Q_INVOKABLE void clearSelection();
@@ -177,6 +190,7 @@ signals:
     void barsMoved();
     void swipedDown();
     void keyboardHeightChanged();
+    void hasTouchKeyboardChanged();
 
 private slots:
     void launchIfIdle();
@@ -197,6 +211,7 @@ private slots:
     void appHidden();
     void swipeFromTop();
     void stepBars();
+    void glide();
     void fetchForDownload(const QString &id, const QString &url);
     void downloadsLog(const QString &line) { log("downloads: " + line); }
 
@@ -208,6 +223,7 @@ private:
     void pageEvent(const QVariantMap &event);
     int evaluate(const QString &expression, const QString &purpose);
     void keyEvent(const QString &type, const QVariantMap &fields);
+    void wheel(double dx, double dy);
     void applySwipe();
     void applyMobileView();
     void setProgress(double progress);
@@ -270,6 +286,12 @@ private:
     QTimer m_barsTimer;
     bool m_keyboardShown;
     int m_keyboardHeight;
+
+    // Trackpad and touch-keyboard swipes: their speed in wheel pixels per ms,
+    // and the glide after the finger lifts.
+    QElapsedTimer m_scrollClock;
+    QTimer m_glideTimer;
+    double m_scrollVX, m_scrollVY;
 
     // The content blocklist's domains (blocklist.txt, tools/fetch-blocklist.py).
     QSet<QByteArray> m_blocklist;

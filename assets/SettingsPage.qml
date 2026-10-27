@@ -72,6 +72,56 @@ Page {
                 checked: browser.setting("swipeNavigation")
                 onCheckedChanged: browser.setSetting("swipeNavigation", checked)
             }
+            // Only on a phone with a touch keyboard (Passport).
+            Container {
+                visible: browser.hasTouchKeyboard
+                topMargin: 20
+                CheckBox {
+                    id: keyboardScroll
+                    text: qsTr("Slide a finger on the keyboard to scroll")
+                    checked: browser.setting("keyboardScroll")
+                    onCheckedChanged: browser.setSetting("keyboardScroll", checked)
+                }
+                Label {
+                    visible: keyboardScroll.checked
+                    text: qsTr("Speed: %1×").arg(keyboardSpeed.immediateValue.toFixed(1))
+                    textStyle.base: SystemDefaults.TextStyles.SubtitleText
+                }
+                Slider {
+                    id: keyboardSpeed
+                    visible: keyboardScroll.checked
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    fromValue: 0.5
+                    toValue: 3
+                    value: browser.setting("keyboardScrollSpeed")
+                    onValueChanged: browser.setSetting("keyboardScrollSpeed", Math.round(value * 10) / 10)
+                }
+            }
+            // Only on a phone with a trackpad (Classic).
+            Container {
+                visible: browser.hasTrackpad
+                topMargin: 20
+                CheckBox {
+                    id: trackpadScroll
+                    text: qsTr("Scroll with the trackpad")
+                    checked: browser.setting("trackpadScroll")
+                    onCheckedChanged: browser.setSetting("trackpadScroll", checked)
+                }
+                Label {
+                    visible: trackpadScroll.checked
+                    text: qsTr("Speed: %1×").arg(Math.round(trackpadSpeed.immediateValue * 20) / 20)
+                    textStyle.base: SystemDefaults.TextStyles.SubtitleText
+                }
+                Slider {
+                    id: trackpadSpeed
+                    visible: trackpadScroll.checked
+                    horizontalAlignment: HorizontalAlignment.Fill
+                    fromValue: 0.25
+                    toValue: 1.5
+                    value: browser.setting("trackpadScrollSpeed")
+                    onValueChanged: browser.setSetting("trackpadScrollSpeed", Math.round(value * 20) / 20)
+                }
+            }
             CheckBox {
                 topMargin: 20
                 text: qsTr("Mobile view (lay pages out for a touch screen)")

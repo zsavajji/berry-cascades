@@ -104,13 +104,44 @@ Page {
         id: root
         background: Color.create("#262626")
         layout: DockLayout {}
-        // The trackpad (Q20) and the touch keyboard's swipes (Passport) scroll the page.
+        // Has the focus while none of the fields does (syncPageInput): the
+        // touch keyboard's touches start from the focus, and with none they
+        // reach no handler. The bars' buttons leave it.
+        focusRetentionPolicyFlags: FocusRetentionPolicy.LoseToFocusable
+        // The trackpad (Q20) and a finger sliding on the touch keyboard (Passport)
+        // scroll the page, which glides on a little after the finger lifts. The
+        // keyboard's touches are its own: the trackpad's handler never sees them.
         eventHandlers: [
             TrackpadHandler {
                 onTrackpad: {
                     if (event.trackpadEventType == TrackpadEventType.Move
                             && browser.engineState == "running" && !page.covered)
-                        browser.scrollPage(event.deltaX, event.deltaY)
+                        browser.scrollPage(event.deltaX, event.deltaY, false)
+                    else if (event.trackpadEventType == TrackpadEventType.End)
+                        browser.endScroll()
+                }
+            },
+            // The page moves the way the finger does, as on the screen. Not while one of
+            // our fields types: the keyboard's swipes are then the keyboard's.
+            TouchKeyboardHandler {
+                property int finger: -1
+                property real lastX
+                property real lastY
+                onTouch: {
+                    if (event.touchType == TouchType.Down) {
+                        finger = event.fingerId
+                        browser.noteTouchKeyboard()
+                    }
+                    if (event.fingerId != finger)
+                        return
+                    if (event.touchType == TouchType.Move
+                            && browser.engineState == "running" && !page.covered
+                            && !address.focused && !findField.focused && !pageInput.focused)
+                        browser.scrollPage(lastX - event.screenX, lastY - event.screenY, true)
+                    else if (event.touchType == TouchType.Up)
+                        browser.endScroll()
+                    lastX = event.screenX
+                    lastY = event.screenY
                 }
             }
         ]
@@ -1000,13 +1031,14 @@ Page {
     }
 
     // pageInput has the keyboard while a text box in the page has the focus
-    // and no field of ours is in use.
+    // and no field of ours is in use; otherwise root has the focus.
     function syncPageInput() {
-        if (browser.editing && !address.focused && !findField.focused
-                && browser.engineState == "running")
+        if (address.focused || findField.focused)
+            return
+        if (browser.editing && browser.engineState == "running")
             pageInput.requestFocus()
-        else if (pageInput.focused)
-            pageInput.loseFocus()
+        else
+            root.requestFocus()
     }
 
     function fillSuggestions(text) {
@@ -1054,6 +1086,7 @@ Page {
         browser.message.connect(notify)
         downloads.message.connect(notify)
         browser.editingChanged.connect(page.syncPageInput)
+        browser.engineStateChanged.connect(page.syncPageInput)
         browser.pageTouched.connect(function () {
             page.typing = false
             address.loseFocus()
