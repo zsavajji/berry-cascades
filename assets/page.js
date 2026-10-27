@@ -5,7 +5,7 @@
 //   {t:"select", text}                text selection mode started
 //   {t:"selection", text}             the selection changed
 //   {t:"selectionEnd"}                selection mode ended in the page
-//   {t:"editing", on}                 an editable field gained/lost focus
+//   {t:"editing", on, what}           the focus moved; on: to an editable field
 //   {t:"scroll", down}                scrolled down (bars give way) or back up
 //   {t:"icon", data}                  the site's icon, a 64x64 PNG data: URL
 // Browser calls window.__berry.* through Runtime.evaluate.
@@ -71,6 +71,17 @@
         !el.readOnly && !el.disabled;
   }
 
+  // Events and document.activeElement stop at a web component; its field
+  // lies inside, in the component's shadow root (reddit's search and login).
+  function inner(e) {
+    return e.composedPath()[0];
+  }
+  function deepActive() {
+    var el = document.activeElement;
+    while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
+    return el;
+  }
+
   document.addEventListener("touchstart", function (e) {
     var now = Date.now();
     if (now - lastTouchReport > 500) {
@@ -80,7 +91,7 @@
     cancelPress();
     if (e.touches.length !== 1) return;
     var t = e.touches[0];
-    press = {x: t.clientX, y: t.clientY, target: e.target, moved: false};
+    press = {x: t.clientX, y: t.clientY, target: e.target, field: editable(inner(e)), moved: false};
     press.timer = setTimeout(longPress, LONG_PRESS_MS);
   }, {capture: true, passive: true});
 
@@ -118,7 +129,7 @@
   }, true);
 
   document.addEventListener("contextmenu", function (e) {
-    if (!editable(e.target)) e.preventDefault();
+    if (!editable(inner(e))) e.preventDefault();
   }, true);
 
   // Chromium's own long press on text starts a selection of its own, with
@@ -126,7 +137,8 @@
   // flat_map, as in Berry Browser). It comes late, after the page has been
   // busy, so only cancelling it works; this script selects with a Range.
   document.addEventListener("selectstart", function (e) {
-    if (!editable(e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement))
+    var t = inner(e);
+    if (!editable(t && t.nodeType === 1 ? t : t && t.parentElement))
       e.preventDefault();
   }, true);
 
@@ -135,7 +147,7 @@
     press = null;
     if (!p) return;
     var el = p.target && p.target.nodeType === 1 ? p.target : (p.target && p.target.parentElement);
-    if (!el || editable(el)) return;
+    if (!el || p.field) return;
     var link = el.closest("a[href]");
     var img = el.closest("img");
     suppressClick = true;
@@ -325,13 +337,22 @@
 
   // ---- editing -------------------------------------------------------------
 
-  var editing = false;
+  // Each focus move, with what took it for the log: "input[search] in
+  // faceplate-search-input" is a field in a web component, "iframe" one in a
+  // frame (which reports its own).
+  var focused = null;
+  function describe(el) {
+    if (!el) return "nothing";
+    var root = el.getRootNode();
+    return (el.tagName + (el.type ? "[" + el.type + "]" : "") +
+        (el.isContentEditable ? "[contenteditable]" : "") +
+        (root.host ? " in " + root.host.tagName : "")).toLowerCase();
+  }
   function updateEditing() {
-    var on = editable(document.activeElement);
-    if (on !== editing) {
-      editing = on;
-      report({t: "editing", on: on});
-    }
+    var el = deepActive();
+    if (el === focused) return;
+    focused = el;
+    report({t: "editing", on: editable(el), what: describe(el)});
   }
   document.addEventListener("focusin", updateEditing, true);
   document.addEventListener("focusout", function () { setTimeout(updateEditing, 0); }, true);
@@ -414,7 +435,7 @@
       endSelection(false);
     },
     selectAll: function () {
-      var el = document.activeElement;
+      var el = deepActive();
       if (editable(el) && el.select) {
         // Inside a field the field's own selection is what gets copied.
         range = null;

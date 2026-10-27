@@ -836,8 +836,13 @@ void Browser::pageEvent(const QVariantMap &event)
         m_selectionText.clear();
         emit selectionChanged();
     } else if (type == "editing") {
-        m_editing = event.value("on").toBool();
-        emit editingChanged();
+        // Logged to tell why a field gets key events instead of typed text.
+        const bool on = event.value("on").toBool();
+        log(QString("focus: %1%2").arg(event.value("what").toString(), on ? ", typed as text" : ""));
+        if (on != m_editing) {
+            m_editing = on;
+            emit editingChanged();
+        }
     } else if (type == "scroll") {
         emit pageScrolled(event.value("down").toBool());
     } else if (type == "icon") {
